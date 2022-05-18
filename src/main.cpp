@@ -31,17 +31,15 @@ int main(int argc, const char *argv[]) {
   unique_ptr<BaseAST> ast;
   auto ret = yyparse(ast);
   assert(!ret);
-  auto ir_prog = new ProgramIR();
-  ir_prog->From_AST((CompUnitAST*)(ast.get()));
   if (mode == "-koopa"){
     freopen(output, "w", stdout); // Redirect the output
-    ir_prog->Dump();
+    Visit_AST((CompUnitAST*)(ast.get()));
   }
   else if (mode == "-riscv"){
     stringstream ir_ss;
     streambuf *buffer = cout.rdbuf();
     cout.rdbuf(ir_ss.rdbuf());
-    ir_prog->Dump();
+    Visit_AST((CompUnitAST*)(ast.get()));
     string ir_str = ir_ss.str();
     const char *ir = ir_str.data();
     cout.rdbuf(buffer);
@@ -58,8 +56,6 @@ int main(int argc, const char *argv[]) {
 
     koopa_delete_raw_program_builder(builder);
   }
-
-  delete ir_prog;
 
   return 0;
 }
