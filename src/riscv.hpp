@@ -2,16 +2,21 @@
 
 #include <string>
 #include <iostream>
+#include <map>
 #include "koopa.h"
+
+int register_cnt = 0;
+std::map<const koopa_raw_value_t, std::string> value_map;
 
 // Declaration of the functions
 void Visit(const koopa_raw_program_t &program);
 void Visit(const koopa_raw_slice_t &slice);
 void Visit(const koopa_raw_function_t &func);
 void Visit(const koopa_raw_basic_block_t &bb);
-void Visit(const koopa_raw_value_t &value);
-void Visit(const koopa_raw_return_t &ret);
-void Visit(const koopa_raw_integer_t &integer);
+std::string Visit(const koopa_raw_value_t &value);
+std::string Visit(const koopa_raw_return_t &ret);
+std::string Visit(const koopa_raw_integer_t &integer);
+std::string Visit(const koopa_raw_binary_t &binary);
 
 // 访问 raw program
 void Visit(const koopa_raw_program_t &program) {
@@ -61,32 +66,71 @@ void Visit(const koopa_raw_basic_block_t &bb) {
 }
 
 // 访问指令
-void Visit(const koopa_raw_value_t &value) {
+std::string Visit(const koopa_raw_value_t &value) {
   // 根据指令类型判断后续需要如何访问
+  if (value_map[value] != "")
+    return value_map[value];
+
   const auto &kind = value->kind;
+  std::string result_var;
   switch (kind.tag) {
     case KOOPA_RVT_RETURN:
       // 访问 return 指令
-      Visit(kind.data.ret);
+      result_var = Visit(kind.data.ret);
       break;
     case KOOPA_RVT_INTEGER:
       // 访问 integer 指令
-      Visit(kind.data.integer);
+      result_var = Visit(kind.data.integer);
+      break;
+    case KOOPA_RVT_BINARY:
+      result_var = Visit(kind.data.binary);
       break;
     default:
       // 其他类型暂时遇不到
       assert(false);
   }
+  value_map[value] = result_var;
+
+  return result_var;
 }
 
-void Visit(const koopa_raw_return_t &ret) {
+std::string Visit(const koopa_raw_return_t &ret) {
+  // 这里没有考虑直接li到a0的做法
   koopa_raw_value_t ret_value = ret.value;
-  assert(ret_value->kind.tag == KOOPA_RVT_INTEGER);
-  Visit(ret_value);
+  std::string result_var =  Visit(ret_value);
+  std::cout << "  " << "mv a0, " << result_var << std::endl;
   std::cout << "  " << "ret" << std::endl;
+  
+  return result_var;
 }
 
-void Visit(const koopa_raw_integer_t &integer) {
+std::string Visit(const koopa_raw_integer_t &integer) {
   int32_t int_val = integer.value;
-  std::cout << "  " << "li a0, " << std::to_string(int_val) << std::endl; 
+  if (int_val == 0)
+    return "x0";
+  std::string next_var = "t" + std::to_string(register_cnt);
+  // This register can be reused, so no incrementation
+  std::cout << "  " << "li " << next_var << ", " << std::to_string(int_val) << std::endl;
+
+  return next_var;
+}
+
+std::string Visit(const koopa_raw_binary_t &binary) {
+  koopa_raw_binary_op_t op = binary.op;
+  std::string left_val = Visit(binary.lhs);
+  std::string right_val = Visit(binary.rhs);
+  std::string result_var = "t" + std::to_string(register_cnt++);
+  switch (op) {
+    case KOOPA_RBO_EQ:
+      std::cout << "  " << "xor " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      std::cout << "  " << "seqz " << result_var << ", " << result_var << std::endl;
+      break;
+    case KOOPA_RBO_SUB:
+      std::cout << "  " << "sub " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    default:
+      assert(false);
+  }
+
+  return result_var;
 }
