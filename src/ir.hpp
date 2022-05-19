@@ -15,6 +15,8 @@ void Visit_AST(const StmtAST *stmt);
 std::string Visit_AST(const ExpAST *exp);
 std::string Visit_AST(const UnaryExpAST *unary_exp);
 std::string Visit_AST(const PrimaryExpAST *primary_exp);
+std::string Visit_AST(const MulExpAST *mul_exp);
+std::string Visit_AST(const AddExpAST *add_exp);
 
 void Visit_AST(const CompUnitAST *comp_unit) {
     Visit_AST((FuncDefAST*)(comp_unit->func_def.get()));
@@ -40,7 +42,7 @@ void Visit_AST(const StmtAST *stmt) {
 }
 
 std::string Visit_AST(const ExpAST *exp) {
-    std::string result_var = Visit_AST((UnaryExpAST*)(exp->unary_exp.get()));
+    std::string result_var = Visit_AST((AddExpAST*)(exp->add_exp.get()));
     return result_var;
 }
 
@@ -84,5 +86,59 @@ std::string Visit_AST(const PrimaryExpAST *primary_exp) {
         result_var = std::to_string(primary_exp->number);
     else
         assert(false);
+
+    return result_var;
+}
+
+std::string Visit_AST(const MulExpAST *mul_exp) {
+    std::string result_var = "";
+    if (mul_exp->op == "")
+        result_var = Visit_AST((UnaryExpAST*)(mul_exp->unary_exp.get()));
+    else {
+        std::string left_result = Visit_AST((MulExpAST*)(mul_exp->mul_exp.get()));
+        std::string right_result = Visit_AST((UnaryExpAST*)(mul_exp->unary_exp.get()));
+        result_var = "%" + std::to_string(var_cnt++);
+        switch (mul_exp->op[0])
+        {
+        case '*':
+            std::cout << "  " << result_var << " = mul " << left_result << ", " << right_result << std::endl;
+            break;
+        case '/':
+            std::cout << "  " << result_var << " = div " << left_result << ", " << right_result << std::endl;
+            break;
+        case '%':
+            std::cout << "  " << result_var << " = mod " << left_result << ", " << right_result << std::endl;
+            break;
+        default:
+            assert(false);
+            break;
+        }
+    }
+
+    return result_var;
+}
+
+std::string Visit_AST(const AddExpAST *add_exp) {
+    std::string result_var = "";
+    if (add_exp->op == "")
+        result_var = Visit_AST((MulExpAST*)(add_exp->mul_exp.get()));
+    else {
+        std::string left_result = Visit_AST((AddExpAST*)(add_exp->add_exp.get()));
+        std::string right_result = Visit_AST((MulExpAST*)(add_exp->mul_exp.get()));
+        result_var = "%" + std::to_string(var_cnt++);
+        switch (add_exp->op[0])
+        {
+        case '+':
+            std::cout << "  " << result_var << " = add " << left_result << ", " << right_result << std::endl;
+            break;
+        case '-':
+            std::cout << "  " << result_var << " = sub " << left_result << ", " << right_result << std::endl;
+            break;
+        default:
+            assert(false);
+            break;
+        }
+    }
+
     return result_var;
 }

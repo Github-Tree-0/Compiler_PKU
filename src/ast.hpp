@@ -63,16 +63,12 @@ public:
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {}
-    // void Dump() const override {
-    //     std::cout << "StmtAST { ";
-    //     std::cout << std::to_string(number);
-    //     std::cout << " }";
-    // }
 };
 
 class ExpAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> unary_exp;
+    std::unique_ptr<BaseAST> add_exp;
+    
     void Dump() const override {}
 };
 
@@ -81,6 +77,7 @@ public:
     std::string type; // "exp" or "number"
     std::unique_ptr<BaseAST> exp;
     int number;
+
     void Dump() const override {}
 };
 
@@ -89,5 +86,24 @@ public:
     std::string type; // "primary" or "unary"
     std::unique_ptr<BaseAST> exp;
     std::string op;
+
+    void Dump() const override {}
+};
+
+class MulExpAST : public BaseAST {
+public:
+    std::string op; // "*", "/", "%" or ""
+    std::unique_ptr<BaseAST> unary_exp;
+    std::unique_ptr<BaseAST> mul_exp;
+
+    void Dump() const override {}
+};
+
+class AddExpAST : public BaseAST {
+public:
+    std::string op; // "+", "-" or ""
+    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> mul_exp;
+
     void Dump() const override {}
 };

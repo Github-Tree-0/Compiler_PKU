@@ -6,6 +6,7 @@
 #include "koopa.h"
 
 int register_cnt = 0;
+int integer_reg_cnt = 0;
 std::map<const koopa_raw_value_t, std::string> value_map;
 
 // Declaration of the functions
@@ -108,8 +109,7 @@ std::string Visit(const koopa_raw_integer_t &integer) {
   int32_t int_val = integer.value;
   if (int_val == 0)
     return "x0";
-  std::string next_var = "t" + std::to_string(register_cnt);
-  // This register can be reused, so no incrementation
+  std::string next_var = "t" + std::to_string(integer_reg_cnt++);
   std::cout << "  " << "li " << next_var << ", " << std::to_string(int_val) << std::endl;
 
   return next_var;
@@ -117,8 +117,10 @@ std::string Visit(const koopa_raw_integer_t &integer) {
 
 std::string Visit(const koopa_raw_binary_t &binary) {
   koopa_raw_binary_op_t op = binary.op;
+  integer_reg_cnt = register_cnt;
   std::string left_val = Visit(binary.lhs);
   std::string right_val = Visit(binary.rhs);
+  integer_reg_cnt = register_cnt;
   std::string result_var = "t" + std::to_string(register_cnt++);
   switch (op) {
     case KOOPA_RBO_EQ:
