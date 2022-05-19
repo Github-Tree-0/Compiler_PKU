@@ -130,6 +130,18 @@ std::string Visit(const koopa_raw_binary_t &binary) {
     case KOOPA_RBO_SUB:
       std::cout << "  " << "sub " << result_var << ", " << left_val << ", " << right_val << std::endl;
       break;
+    case KOOPA_RBO_ADD:
+      std::cout << "  " << "add " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_MUL:
+      std::cout << "  " << "mul " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_DIV:
+      std::cout << "  " << "div " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_MOD:
+      std::cout << "  " << "rem " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
     default:
       assert(false);
   }
