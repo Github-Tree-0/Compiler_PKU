@@ -17,6 +17,11 @@ std::string Visit_AST(const UnaryExpAST *unary_exp);
 std::string Visit_AST(const PrimaryExpAST *primary_exp);
 std::string Visit_AST(const MulExpAST *mul_exp);
 std::string Visit_AST(const AddExpAST *add_exp);
+std::string Visit_AST(const RelExpAST *rel_exp);
+std::string Visit_AST(const EqExpAST *eq_exp);
+std::string Visit_AST(const LAndExpAST *land_exp);
+std::string Visit_AST(const LOrExpAST *lor_exp);
+
 
 void Visit_AST(const CompUnitAST *comp_unit) {
     Visit_AST((FuncDefAST*)(comp_unit->func_def.get()));
@@ -42,7 +47,7 @@ void Visit_AST(const StmtAST *stmt) {
 }
 
 std::string Visit_AST(const ExpAST *exp) {
-    std::string result_var = Visit_AST((AddExpAST*)(exp->add_exp.get()));
+    std::string result_var = Visit_AST((LOrExpAST*)(exp->lor_exp.get()));
     return result_var;
 }
 
@@ -139,6 +144,88 @@ std::string Visit_AST(const AddExpAST *add_exp) {
             break;
         }
     }
+
+    return result_var;
+}
+
+std::string Visit_AST(const RelExpAST *rel_exp) {
+    std::string result_var = "";
+    if (rel_exp->op == "")
+        result_var = Visit_AST((AddExpAST*)(rel_exp->add_exp.get()));
+    else {
+        std::string left_result = Visit_AST((RelExpAST*)(rel_exp->rel_exp.get()));
+        std::string right_result = Visit_AST((AddExpAST*)(rel_exp->add_exp.get()));
+        result_var = "%" + std::to_string(var_cnt++);
+        if (rel_exp->op == "<")
+            std::cout << "  " << result_var << " = lt " << left_result << ", " << right_result << std::endl;
+        else if (rel_exp->op == ">")
+            std::cout << "  " << result_var << " = gt " << left_result << ", " << right_result << std::endl;
+        else if (rel_exp->op == "<=")
+            std::cout << "  " << result_var << " = le " << left_result << ", " << right_result << std::endl;
+        else if (rel_exp->op == ">=")
+            std::cout << "  " << result_var << " = ge " << left_result << ", " << right_result << std::endl;
+        else
+            assert(false);
+    }
+
+    return result_var;
+}
+
+std::string Visit_AST(const EqExpAST *eq_exp) {
+    std::string result_var = "";
+    if (eq_exp->op == "")
+        result_var = Visit_AST((RelExpAST*)(eq_exp->rel_exp.get()));
+    else {
+        std::string left_result = Visit_AST((EqExpAST*)(eq_exp->eq_exp.get()));
+        std::string right_result = Visit_AST((RelExpAST*)(eq_exp->rel_exp.get()));
+        result_var = "%" + std::to_string(var_cnt++);
+        if (eq_exp->op == "==")
+            std::cout << "  " << result_var << " = eq " << left_result << ", " << right_result << std::endl;
+        else if (eq_exp->op == "!=")
+            std::cout << "  " << result_var << " = ne " << left_result << ", " << right_result << std::endl;
+        else
+            assert(false);
+    }
+
+    return result_var;
+}
+
+std::string Visit_AST(const LAndExpAST *land_exp) {
+    std::string result_var = "";
+    if (land_exp->op == "")
+        result_var = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
+    else if (land_exp->op == "&&") {
+        std::string left_result = Visit_AST((LAndExpAST*)(land_exp->land_exp.get()));
+        std::string right_result = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
+        std::string temp_var1 = "%" + std::to_string(var_cnt++);
+        std::string temp_var2 = "%" + std::to_string(var_cnt++);
+        result_var = "%" + std::to_string(var_cnt++);
+        
+        std::cout << "  " << temp_var1 << " = ne " << left_result << ", 0" << std::endl;
+        std::cout << "  " << temp_var2 << " = ne " << right_result << ", 0" << std::endl;
+        std::cout << "  " << result_var << " = and " << temp_var1 << ", " << temp_var2 << std::endl;
+    }
+    else
+        assert(false);
+
+    return result_var;
+}
+
+std::string Visit_AST(const LOrExpAST *lor_exp) {
+    std::string result_var = "";
+    if (lor_exp->op == "")
+        result_var = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
+    else if (lor_exp->op == "||") {
+        std::string left_result = Visit_AST((LOrExpAST*)(lor_exp->lor_exp.get()));
+        std::string right_result = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
+        std::string temp_var = "%" + std::to_string(var_cnt++);
+        result_var = "%" + std::to_string(var_cnt++);
+        
+        std::cout << "  " << temp_var << " = or " << left_result << ", " << right_result << std::endl;
+        std::cout << "  " << result_var << " = ne " << temp_var << ", 0" << std::endl;
+    }
+    else
+        assert(false);
 
     return result_var;
 }

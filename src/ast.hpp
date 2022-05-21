@@ -67,7 +67,7 @@ public:
 
 class ExpAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> lor_exp;
     
     void Dump() const override {}
 };
@@ -104,6 +104,42 @@ public:
     std::string op; // "+", "-" or ""
     std::unique_ptr<BaseAST> add_exp;
     std::unique_ptr<BaseAST> mul_exp;
+
+    void Dump() const override {}
+};
+
+class RelExpAST : public BaseAST {
+public:
+    std::string op; // "<", ">", "<=", ">=" or ""
+    std::unique_ptr<BaseAST> add_exp;
+    std::unique_ptr<BaseAST> rel_exp;
+
+    void Dump() const override {}
+};
+
+class EqExpAST : public BaseAST {
+public:
+    std::string op; // "==", "!=" or ""
+    std::unique_ptr<BaseAST> eq_exp;
+    std::unique_ptr<BaseAST> rel_exp;
+
+    void Dump() const override {}
+};
+
+class LAndExpAST : public BaseAST {
+public:
+    std::string op; // "&&" or ""
+    std::unique_ptr<BaseAST> eq_exp;
+    std::unique_ptr<BaseAST> land_exp;
+
+    void Dump() const override {}
+};
+
+class LOrExpAST : public BaseAST {
+public:
+    std::string op; // "||" or ""
+    std::unique_ptr<BaseAST> land_exp;
+    std::unique_ptr<BaseAST> lor_exp;
 
     void Dump() const override {}
 };

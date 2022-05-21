@@ -32,9 +32,11 @@ using namespace std;
 %token INT RETURN
 %token <str_val> IDENT
 %token <int_val> INT_CONST
+%token <str_val> RELOP EQOP ANDOP OROP
 
 // 非终结符的类型定义
 %type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp AddExp MulExp
+%type <ast_val> RelExp EqExp LAndExp LOrExp
 %type <int_val> Number
 %type <str_val> UnaryOp
 
@@ -83,9 +85,9 @@ Stmt
   ;
 
 Exp
-  : AddExp {
+  : LOrExp {
     auto exp = new ExpAST();
-    exp->add_exp = unique_ptr<BaseAST>($1);
+    exp->lor_exp = unique_ptr<BaseAST>($1);
     $$ = exp;
   }
   ;
@@ -192,6 +194,70 @@ AddExp
     add_exp->add_exp = std::unique_ptr<BaseAST>($1);
     add_exp->mul_exp = std::unique_ptr<BaseAST>($3);
     $$ = add_exp;
+  }
+  ;
+
+RelExp
+  : AddExp {
+    auto rel_exp = new RelExpAST();
+    rel_exp->op = "";
+    rel_exp->add_exp = std::unique_ptr<BaseAST>($1);
+    $$ = rel_exp;
+  }
+  | RelExp RELOP AddExp {
+    auto rel_exp = new RelExpAST();
+    rel_exp->rel_exp = std::unique_ptr<BaseAST>($1);
+    rel_exp->op = *unique_ptr<string>($2);
+    rel_exp->add_exp = std::unique_ptr<BaseAST>($3);
+    $$ = rel_exp;
+  }
+  ;
+
+EqExp
+  : RelExp {
+    auto eq_exp = new EqExpAST();
+    eq_exp->op = "";
+    eq_exp->rel_exp = std::unique_ptr<BaseAST>($1);
+    $$ = eq_exp;
+  }
+  | EqExp EQOP RelExp {
+    auto eq_exp = new EqExpAST();
+    eq_exp->eq_exp = std::unique_ptr<BaseAST>($1);
+    eq_exp->op = *unique_ptr<string>($2);
+    eq_exp->rel_exp = std::unique_ptr<BaseAST>($3);
+    $$ = eq_exp;
+  }
+  ;
+
+LAndExp
+  : EqExp {
+    auto land_exp = new LAndExpAST();
+    land_exp->op = "";
+    land_exp->eq_exp = std::unique_ptr<BaseAST>($1);
+    $$ = land_exp;
+  }
+  | LAndExp ANDOP EqExp {
+    auto land_exp = new LAndExpAST();
+    land_exp->land_exp = std::unique_ptr<BaseAST>($1);
+    land_exp->op = *unique_ptr<string>($2);
+    land_exp->eq_exp = std::unique_ptr<BaseAST>($3);
+    $$ = land_exp;
+  }
+  ;
+
+LOrExp
+  : LAndExp {
+    auto lor_exp = new LOrExpAST();
+    lor_exp->op = "";
+    lor_exp->land_exp = std::unique_ptr<BaseAST>($1);
+    $$ = lor_exp;
+  }
+  | LOrExp OROP LAndExp {
+    auto lor_exp = new LOrExpAST();
+    lor_exp->lor_exp = std::unique_ptr<BaseAST>($1);
+    lor_exp->op = *unique_ptr<string>($2);
+    lor_exp->land_exp = std::unique_ptr<BaseAST>($3);
+    $$ = lor_exp;
   }
   ;
 
