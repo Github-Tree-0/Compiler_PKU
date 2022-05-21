@@ -109,7 +109,8 @@ std::string Visit(const koopa_raw_integer_t &integer) {
   int32_t int_val = integer.value;
   if (int_val == 0)
     return "x0";
-  std::string next_var = "t" + std::to_string(integer_reg_cnt++);
+  std::string next_var = integer_reg_cnt < 7 ? "t" + std::to_string(integer_reg_cnt) : "a" + std::to_string(integer_reg_cnt - 7);
+  integer_reg_cnt++;
   std::cout << "  " << "li " << next_var << ", " << std::to_string(int_val) << std::endl;
 
   return next_var;
@@ -121,7 +122,8 @@ std::string Visit(const koopa_raw_binary_t &binary) {
   std::string left_val = Visit(binary.lhs);
   std::string right_val = Visit(binary.rhs);
   integer_reg_cnt = register_cnt;
-  std::string result_var = "t" + std::to_string(register_cnt++);
+  std::string result_var = register_cnt < 7 ? "t" + std::to_string(register_cnt) : "a" + std::to_string(register_cnt - 7);
+  register_cnt++;
   switch (op) {
     case KOOPA_RBO_EQ:
       std::cout << "  " << "xor " << result_var << ", " << left_val << ", " << right_val << std::endl;
@@ -141,6 +143,30 @@ std::string Visit(const koopa_raw_binary_t &binary) {
       break;
     case KOOPA_RBO_MOD:
       std::cout << "  " << "rem " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_NOT_EQ:
+      std::cout << "  " << "xor " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      std::cout << "  " << "snez " << result_var << ", " << result_var << std::endl;
+      break;
+    case KOOPA_RBO_LT:
+      std::cout << "  " << "slt " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_LE:
+      std::cout << "  " << "sgt " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      std::cout << "  " << "xori " << result_var << ", " << result_var << ", 1" << std::endl; 
+      break;
+    case KOOPA_RBO_AND:
+      std::cout << "  " << "and " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_OR:
+      std::cout << "  " << "or " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_GT:
+      std::cout << "  " << "sgt " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      break;
+    case KOOPA_RBO_GE:
+      std::cout << "  " << "slt " << result_var << ", " << left_val << ", " << right_val << std::endl;
+      std::cout << "  " << "xori " << result_var << ", " << result_var << ", 1" << std::endl; 
       break;
     default:
       assert(false);
