@@ -31,8 +31,6 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 /* Ops */
 RelOP         [<|>][=]?
 EqOP          [=|!][=]
-AndOP         "&&"
-OrOP          "||"
 
 %%
 
@@ -42,6 +40,7 @@ OrOP          "||"
 
 "int"           { return INT; }
 "return"        { return RETURN; }
+"const"         { return CONST; }
 
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
 
@@ -51,8 +50,8 @@ OrOP          "||"
 
 {RelOP}         { yylval.str_val = new string(yytext); return RELOP; }
 {EqOP}          { yylval.str_val = new string(yytext); return EQOP; }
-{AndOP}         { yylval.str_val = new string(yytext); return ANDOP; }
-{OrOP}          { yylval.str_val = new string(yytext); return OROP; }
+"&&"            { yylval.str_val = new string(yytext); return ANDOP; }
+"||"            { yylval.str_val = new string(yytext); return OROP; }
 
 .               { return yytext[0]; }
 

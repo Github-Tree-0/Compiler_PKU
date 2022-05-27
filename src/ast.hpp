@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <iostream>
+#include <vector>
 
 class BaseAST {
 public:
@@ -38,13 +39,9 @@ public:
 
 class BlockAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> stmt;
+    std::vector<std::unique_ptr<BaseAST> > block_item_list;
 
-    void Dump() const override {
-        std::cout << "BlockAST { ";
-        stmt->Dump();
-        std::cout << " }";
-    }
+    void Dump() const override {}
 };
 
 class FuncTypeAST : public BaseAST {
@@ -74,8 +71,9 @@ public:
 
 class PrimaryExpAST : public BaseAST {
 public:
-    std::string type; // "exp" or "number"
+    std::string type; // "exp", "number" or "lval"
     std::unique_ptr<BaseAST> exp;
+    std::string l_val;
     int number;
 
     void Dump() const override {}
@@ -140,6 +138,51 @@ public:
     std::string op; // "||" or ""
     std::unique_ptr<BaseAST> land_exp;
     std::unique_ptr<BaseAST> lor_exp;
+
+    void Dump() const override {}
+};
+
+class DeclAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> const_decl;
+
+    void Dump() const override {}
+};
+
+class ConstDeclAST : public BaseAST {
+public:
+    std::string b_type;
+    std::vector<std::unique_ptr<BaseAST> > const_def_list;
+
+    void Dump() const override {}
+};
+
+class ConstDefAST : public BaseAST {
+public:
+    std::string ident;
+    std::unique_ptr<BaseAST> const_init_val;
+
+    void Dump() const override {}
+};
+
+class ConstInitValAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> const_exp;
+
+    void Dump() const override {}
+};
+
+class BlockItemAST : public BaseAST {
+public:
+    std::string type; // "decl" or "stmt"
+    std::unique_ptr<BaseAST> content;
+
+    void Dump() const override {}
+};
+
+class ConstExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {}
 };

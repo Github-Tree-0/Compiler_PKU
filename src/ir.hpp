@@ -4,14 +4,20 @@
 #include <cstdlib>
 #include <iostream>
 #include <vector>
+#include <map>
 #include "ast.hpp"
 
 int var_cnt = 0;
+std::map<std::string, int> symbol_table;
 
 void Visit_AST(const CompUnitAST *comp_unit);
 void Visit_AST(const FuncDefAST *func_def);
 void Visit_AST(const BlockAST *block);
 void Visit_AST(const StmtAST *stmt);
+void Visit_AST(const DeclAST *decl);
+void Visit_AST(const BlockItemAST *block_item);
+void Visit_AST(const ConstDeclAST *const_decl);
+void Visit_AST(const ConstDefAST *const_def);
 std::string Visit_AST(const ExpAST *exp);
 std::string Visit_AST(const UnaryExpAST *unary_exp);
 std::string Visit_AST(const PrimaryExpAST *primary_exp);
@@ -21,6 +27,17 @@ std::string Visit_AST(const RelExpAST *rel_exp);
 std::string Visit_AST(const EqExpAST *eq_exp);
 std::string Visit_AST(const LAndExpAST *land_exp);
 std::string Visit_AST(const LOrExpAST *lor_exp);
+int Visit_AST(const ConstInitValAST *const_init_val);
+int Cal_AST(const ConstExpAST *const_exp);
+int Cal_AST(const ExpAST *exp);
+int Cal_AST(const UnaryExpAST *unary_exp);
+int Cal_AST(const PrimaryExpAST *primary_exp);
+int Cal_AST(const MulExpAST *mul_exp);
+int Cal_AST(const AddExpAST *add_exp);
+int Cal_AST(const RelExpAST *rel_exp);
+int Cal_AST(const EqExpAST *eq_exp);
+int Cal_AST(const LAndExpAST *land_exp);
+int Cal_AST(const LOrExpAST *lor_exp);
 
 
 void Visit_AST(const CompUnitAST *comp_unit) {
@@ -38,7 +55,9 @@ void Visit_AST(const FuncDefAST *func_def) {
 }
 
 void Visit_AST(const BlockAST *block) {
-    Visit_AST((StmtAST*)(block->stmt.get()));
+    int size = block->block_item_list.size();
+    for (int i = 0; i < size; ++i)
+        Visit_AST((BlockItemAST*)(block->block_item_list[i].get()));
 }
 
 void Visit_AST(const StmtAST *stmt) {
@@ -89,6 +108,8 @@ std::string Visit_AST(const PrimaryExpAST *primary_exp) {
         result_var = Visit_AST((ExpAST*)(primary_exp->exp.get()));
     else if (primary_exp->type == "number")
         result_var = std::to_string(primary_exp->number);
+    else if (primary_exp->type == "lval")
+        result_var = std::to_string(symbol_table[primary_exp->l_val]);
     else
         assert(false);
 
@@ -228,4 +249,204 @@ std::string Visit_AST(const LOrExpAST *lor_exp) {
         assert(false);
 
     return result_var;
+}
+
+int Cal_AST(const ExpAST *exp) {
+    int result = Cal_AST((LOrExpAST*)(exp->lor_exp.get()));
+    return result;
+}
+
+int Cal_AST(const UnaryExpAST *unary_exp) {
+    int result = 0;
+    if (unary_exp->type == "primary")
+        result = Cal_AST((PrimaryExpAST*)(unary_exp->exp.get()));
+    else if (unary_exp->type == "unary") {
+        int temp = Cal_AST((UnaryExpAST*)(unary_exp->exp.get()));
+
+        switch (unary_exp->op[0])
+        {
+        case '+':
+            result = temp;
+            break;
+        case '-':
+            result = -temp;
+            break;
+        case '!':
+            result = !temp;
+            break;
+        default:
+            assert(false);
+        }
+    }
+    else
+        assert(false);
+
+    return result;
+}
+
+int Cal_AST(const PrimaryExpAST *primary_exp) {
+    int result = 0;
+    if (primary_exp->type == "exp")
+        result = Cal_AST((ExpAST*)(primary_exp->exp.get()));
+    else if (primary_exp->type == "number")
+        result = primary_exp->number;
+    else if (primary_exp->type == "lval")
+        result = symbol_table[primary_exp->l_val];
+    else
+        assert(false);
+
+    return result;
+}
+
+int Cal_AST(const MulExpAST *mul_exp) {
+    int result = 0;
+    if (mul_exp->op == "")
+        result = Cal_AST((UnaryExpAST*)(mul_exp->unary_exp.get()));
+    else {
+        int left_result = Cal_AST((MulExpAST*)(mul_exp->mul_exp.get()));
+        int right_result = Cal_AST((UnaryExpAST*)(mul_exp->unary_exp.get()));
+        switch (mul_exp->op[0])
+        {
+        case '*':
+            result = left_result * right_result;
+            break;
+        case '/':
+            result = left_result / right_result;
+            break;
+        case '%':
+            result = left_result % right_result;
+            break;
+        default:
+            assert(false);
+            break;
+        }
+    }
+
+    return result;
+}
+
+int Cal_AST(const AddExpAST *add_exp) {
+    int result = 0;
+    if (add_exp->op == "")
+        result = Cal_AST((MulExpAST*)(add_exp->mul_exp.get()));
+    else {
+        int left_result = Cal_AST((AddExpAST*)(add_exp->add_exp.get()));
+        int right_result = Cal_AST((MulExpAST*)(add_exp->mul_exp.get()));
+        switch (add_exp->op[0])
+        {
+        case '+':
+            result = left_result + right_result;
+            break;
+        case '-':
+            result = left_result - right_result;
+            break;
+        default:
+            assert(false);
+            break;
+        }
+    }
+
+    return result;
+}
+
+int Cal_AST(const RelExpAST *rel_exp) {
+    int result = 0;
+    if (rel_exp->op == "")
+        result = Cal_AST((AddExpAST*)(rel_exp->add_exp.get()));
+    else {
+        int left_result = Cal_AST((RelExpAST*)(rel_exp->rel_exp.get()));
+        int right_result = Cal_AST((AddExpAST*)(rel_exp->add_exp.get()));
+        if (rel_exp->op == "<")
+            result = (left_result < right_result);
+        else if (rel_exp->op == ">")
+            result = (left_result > right_result);
+        else if (rel_exp->op == "<=")
+            result = (left_result <= right_result);
+        else if (rel_exp->op == ">=")
+            result = (left_result >= right_result);
+        else
+            assert(false);
+    }
+
+    return result;
+}
+
+int Cal_AST(const EqExpAST *eq_exp) {
+    int result = 0;
+    if (eq_exp->op == "")
+        result = Cal_AST((RelExpAST*)(eq_exp->rel_exp.get()));
+    else {
+        int left_result = Cal_AST((EqExpAST*)(eq_exp->eq_exp.get()));
+        int right_result = Cal_AST((RelExpAST*)(eq_exp->rel_exp.get()));
+        if (eq_exp->op == "==")
+            result = (left_result == right_result);
+        else if (eq_exp->op == "!=")
+            result = (left_result != right_result);
+        else
+            assert(false);
+    }
+
+    return result;
+}
+
+int Cal_AST(const LAndExpAST *land_exp) {
+    int result = 0;
+    if (land_exp->op == "")
+        result = Cal_AST((EqExpAST*)(land_exp->eq_exp.get()));
+    else if (land_exp->op == "&&") {
+        int left_result = Cal_AST((LAndExpAST*)(land_exp->land_exp.get()));
+        int right_result = Cal_AST((EqExpAST*)(land_exp->eq_exp.get()));
+        result = left_result && right_result;
+    }
+    else
+        assert(false);
+
+    return result;
+}
+
+int Cal_AST(const LOrExpAST *lor_exp) {
+    int result = 0;
+    if (lor_exp->op == "")
+        result = Cal_AST((LAndExpAST*)(lor_exp->land_exp.get()));
+    else if (lor_exp->op == "||") {
+        int left_result = Cal_AST((LOrExpAST*)(lor_exp->lor_exp.get()));
+        int right_result = Cal_AST((LAndExpAST*)(lor_exp->land_exp.get()));
+        result = left_result || right_result;
+    }
+    else
+        assert(false);
+
+    return result;
+}
+
+void Visit_AST(const DeclAST *decl) {
+    Visit_AST((ConstDeclAST*)(decl->const_decl.get()));
+}
+
+void Visit_AST(const BlockItemAST *block_item) {
+    if (block_item->type == "decl")
+        Visit_AST((DeclAST*)(block_item->content.get()));
+    else if (block_item->type == "stmt")
+        Visit_AST((StmtAST*)(block_item->content.get()));
+    else
+        assert(false);
+}
+
+void Visit_AST(const ConstDeclAST *const_decl) {
+    assert(const_decl->b_type == "int"); // Only support int at present
+    int size = const_decl->const_def_list.size();
+    for (int i = 0; i < size; ++i)
+        Visit_AST((ConstDefAST*)(const_decl->const_def_list[i].get()));
+}
+
+void Visit_AST(const ConstDefAST *const_def) {
+    symbol_table[const_def->ident] = Visit_AST((ConstInitValAST*)(const_def->const_init_val.get()));
+}
+
+int Visit_AST(const ConstInitValAST *const_init_val) {
+    return Cal_AST((ConstExpAST*)(const_init_val->const_exp.get()));
+}
+
+int Cal_AST(const ConstExpAST *const_exp) {
+    return Cal_AST((ExpAST*)(const_exp->exp.get()));
 }
