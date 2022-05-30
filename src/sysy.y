@@ -39,7 +39,8 @@ using namespace std;
 // 非终结符的类型定义
 %type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp AddExp MulExp
 %type <ast_val> RelExp EqExp LAndExp LOrExp Decl ConstDecl ConstDef ConstInitVal BlockItem ConstExp
-%type <vec_val> BlockItem_List ConstDef_List
+%type <ast_val> VarDecl VarDef InitVal
+%type <vec_val> BlockItem_List ConstDef_List VarDef_List
 %type <int_val> Number
 %type <str_val> UnaryOp BType LVal
 
@@ -84,7 +85,14 @@ Block
 Stmt
   : RETURN Exp ';' {
     auto stmt = new StmtAST();
+    stmt->l_val = "";
     stmt->exp = unique_ptr<BaseAST>($2);
+    $$ = stmt;
+  }
+  | LVal '=' Exp ';' {
+    auto stmt = new StmtAST();
+    stmt->l_val = *unique_ptr<string>($1);
+    stmt->exp = unique_ptr<BaseAST>($3);
     $$ = stmt;
   }
   ;
@@ -275,7 +283,14 @@ LOrExp
 Decl
   : ConstDecl {
     auto decl = new DeclAST();
-    decl->const_decl = unique_ptr<BaseAST>($1);
+    decl->type = "const_decl";
+    decl->decl = unique_ptr<BaseAST>($1);
+    $$ = decl;
+  }
+  | VarDecl {
+    auto decl = new DeclAST();
+    decl->type = "var_decl";
+    decl->decl = unique_ptr<BaseAST>($1);
     $$ = decl;
   }
   ;
@@ -345,6 +360,41 @@ ConstExp
   }
   ;
 
+VarDecl
+  : BType VarDef_List ';' {
+    auto var_decl = new VarDeclAST();
+    var_decl->b_type = *unique_ptr<string>($1);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($2);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      var_decl->var_def_list.push_back(move(*iter));
+    $$ = var_decl;
+  }
+  ;
+
+VarDef
+  : IDENT {
+    auto var_def = new VarDefAST();
+    var_def->ident = *unique_ptr<string>($1);
+    var_def->has_init_val = false;
+    $$ = var_def;
+  }
+  | IDENT '=' InitVal {
+    auto var_def = new VarDefAST();
+    var_def->ident = *unique_ptr<string>($1);
+    var_def->has_init_val = true;
+    var_def->init_val = unique_ptr<BaseAST>($3);
+    $$ = var_def;
+  }
+  ;
+
+InitVal
+  : Exp {
+    auto init_val = new InitValAST();
+    init_val->exp = unique_ptr<BaseAST>($1);
+    $$ = init_val;
+  }
+  ;
+
 BlockItem_List
   : {
     vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
@@ -358,17 +408,30 @@ BlockItem_List
   ;
 
 ConstDef_List
-: ConstDef {
-  vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
-  v->push_back(unique_ptr<BaseAST>($1));
-  $$ = v;
-}
-| ConstDef_List ',' ConstDef {
-  vector<unique_ptr<BaseAST> > *v = ($1);
-  v->push_back(unique_ptr<BaseAST>($3));
-  $$ = v;
-}
-;
+  : ConstDef {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | ConstDef_List ',' ConstDef {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+  ;
+
+VarDef_List
+  : VarDef {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | VarDef_List ',' VarDef {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+
 
 %%
 

@@ -57,6 +57,7 @@ public:
 
 class StmtAST : public BaseAST {
 public:
+    std::string l_val; // "" or name
     std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {}
@@ -144,7 +145,8 @@ public:
 
 class DeclAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> const_decl;
+    std::string type; // "const_decl" or "var_decl"
+    std::unique_ptr<BaseAST> decl;
 
     void Dump() const override {}
 };
@@ -181,6 +183,30 @@ public:
 };
 
 class ConstExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {}
+};
+
+class VarDeclAST : public BaseAST {
+public:
+    std::string b_type;
+    std::vector<std::unique_ptr<BaseAST> > var_def_list;
+
+    void Dump() const override {}
+};
+
+class VarDefAST : public BaseAST {
+public:
+    std::string ident;
+    bool has_init_val;
+    std::unique_ptr<BaseAST> init_val;
+
+    void Dump() const override {}
+};
+
+class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
 
