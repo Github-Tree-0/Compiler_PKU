@@ -487,8 +487,10 @@ void Visit_AST(const VarDefAST *var_def) {
     std::string name = "@" + var_def->ident;
     std::cout << "  " << name << " = alloc i32" << std::endl;
     symbol_table[var_def->ident] = name;
-    if (var_def->has_init_val)
-        std::cout << "  store " << Visit_AST((InitValAST*)(var_def->init_val.get())) << ", " << name << std::endl;
+    if (var_def->has_init_val) {
+        std::string value = Visit_AST((InitValAST*)(var_def->init_val.get()));
+        std::cout << "  store " << value << ", " << name << std::endl;
+    }
 }
 
 std::string Visit_AST(const InitValAST *init_val) {
