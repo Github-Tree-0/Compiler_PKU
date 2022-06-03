@@ -10,11 +10,13 @@
 
 int var_cnt = 0;
 std::vector<std::map<std::string, std::variant<int, std::string> > > symbol_tables;
+int if_else_cnt = 0;
 
 void Visit_AST(const CompUnitAST *comp_unit);
 void Visit_AST(const FuncDefAST *func_def);
 void Visit_AST(const BlockAST *block);
 void Visit_AST(const StmtAST *stmt);
+void Visit_AST(const SimpleStmtAST *stmt);
 void Visit_AST(const DeclAST *decl);
 void Visit_AST(const BlockItemAST *block_item);
 void Visit_AST(const ConstDeclAST *const_decl);
@@ -78,7 +80,7 @@ void Visit_AST(const BlockAST *block) {
     symbol_tables.pop_back();
 }
 
-void Visit_AST(const StmtAST *stmt) {
+void Visit_AST(const SimpleStmtAST *stmt) {
     if (stmt->type == "ret") {
         if (stmt->block_exp == nullptr)
             std::cout << "  " << "ret" << std::endl;
@@ -99,6 +101,39 @@ void Visit_AST(const StmtAST *stmt) {
     }
     else if (stmt->type == "block")
         Visit_AST((BlockAST*)(stmt->block_exp.get()));
+    else
+        assert(false);
+}
+
+void Visit_AST(const StmtAST *stmt) {
+    if (stmt->type == "simple")
+        Visit_AST((SimpleStmtAST*)(stmt->exp_simple.get()));
+    else if (stmt->type == "if") {
+        std::string if_result = Visit_AST((ExpAST*)(stmt->exp_simple.get()));
+        std::string label_then = "%then_" + std::to_string(if_else_cnt);
+        std::string label_end = "%end_" + std::to_string(if_else_cnt);
+        if_else_cnt++;
+        std::cout << "  " << "br " << if_result << ", " << label_then << ", " << label_end << std::endl;
+        std::cout << label_then << ":" << std::endl;
+        Visit_AST((StmtAST*)(stmt->if_stmt.get()));
+        std::cout << "  " << "jump " << label_end << std::endl;
+        std::cout << label_end << ":" << std::endl;
+    }
+    else if (stmt->type == "ifelse") {
+        std::string if_result = Visit_AST((ExpAST*)(stmt->exp_simple.get()));
+        std::string label_then = "%then_" + std::to_string(if_else_cnt);
+        std::string label_else = "%else_" + std::to_string(if_else_cnt);
+        std::string label_end = "%end_" + std::to_string(if_else_cnt);
+        if_else_cnt++;
+        std::cout << "  " << "br " << if_result << ", " << label_then << ", " << label_else << std::endl;
+        std::cout << label_then << ":" << std::endl;
+        Visit_AST((StmtAST*)(stmt->if_stmt.get()));
+        std::cout << "  " << "jump " << label_end << std::endl;
+        std::cout << label_else << ":" << std::endl;
+        Visit_AST((StmtAST*)(stmt->else_stmt.get()));
+        std::cout << "  " << "jump " << label_end << std::endl;
+        std::cout << label_end << ":" << std::endl;
+    }
     else
         assert(false);
 }
