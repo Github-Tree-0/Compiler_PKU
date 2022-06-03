@@ -85,14 +85,39 @@ Block
 Stmt
   : RETURN Exp ';' {
     auto stmt = new StmtAST();
-    stmt->l_val = "";
-    stmt->exp = unique_ptr<BaseAST>($2);
+    stmt->type = "ret";
+    stmt->block_exp = unique_ptr<BaseAST>($2);
+    $$ = stmt;
+  }
+  | RETURN ';' {
+    auto stmt = new StmtAST();
+    stmt->type = "ret";
+    stmt->block_exp = nullptr;
     $$ = stmt;
   }
   | LVal '=' Exp ';' {
     auto stmt = new StmtAST();
+    stmt->type = "lval";
     stmt->l_val = *unique_ptr<string>($1);
-    stmt->exp = unique_ptr<BaseAST>($3);
+    stmt->block_exp = unique_ptr<BaseAST>($3);
+    $$ = stmt;
+  }
+  | Block {
+    auto stmt = new StmtAST();
+    stmt->type = "block";
+    stmt->block_exp = unique_ptr<BaseAST>($1);
+    $$ = stmt;
+  }
+  | Exp ';' {
+    auto stmt = new StmtAST();
+    stmt->type = "exp";
+    stmt->block_exp = unique_ptr<BaseAST>($1);
+    $$ = stmt;
+  }
+  | ';' {
+    auto stmt = new StmtAST();
+    stmt->type = "exp";
+    stmt->block_exp = nullptr;
     $$ = stmt;
   }
   ;

@@ -9,7 +9,7 @@
 #include "ast.hpp"
 
 int var_cnt = 0;
-std::map<std::string, std::variant<int, std::string> > symbol_table;
+std::vector<std::map<std::string, std::variant<int, std::string> > > symbol_tables;
 
 void Visit_AST(const CompUnitAST *comp_unit);
 void Visit_AST(const FuncDefAST *func_def);
@@ -42,7 +42,18 @@ int Cal_AST(const RelExpAST *rel_exp);
 int Cal_AST(const EqExpAST *eq_exp);
 int Cal_AST(const LAndExpAST *land_exp);
 int Cal_AST(const LOrExpAST *lor_exp);
+std::variant<int, std::string> look_up_symbol_tables(std::string l_val);
 
+std::variant<int, std::string> look_up_symbol_tables(std::string l_val) {
+    int size = symbol_tables.size();
+    for (int i = size-1; i >= 0; --i) {
+        if (symbol_tables[i].count(l_val))
+            return symbol_tables[i][l_val];
+    }
+
+    assert(false);
+    return -1;
+}
 
 void Visit_AST(const CompUnitAST *comp_unit) {
     Visit_AST((FuncDefAST*)(comp_unit->func_def.get()));
@@ -59,20 +70,37 @@ void Visit_AST(const FuncDefAST *func_def) {
 }
 
 void Visit_AST(const BlockAST *block) {
+    std::map<std::string, std::variant<int, std::string> > symbol_table;
+    symbol_tables.push_back(symbol_table);
     int size = block->block_item_list.size();
     for (int i = 0; i < size; ++i)
         Visit_AST((BlockItemAST*)(block->block_item_list[i].get()));
+    symbol_tables.pop_back();
 }
 
 void Visit_AST(const StmtAST *stmt) {
-    std::string result_var = Visit_AST((ExpAST*)(stmt->exp.get()));
-    if (stmt->l_val == "")
-        std::cout << "  " << "ret " << result_var << std::endl;
-    else {
-        std::variant<int, std::string> value = symbol_table[stmt->l_val];
+    if (stmt->type == "ret") {
+        if (stmt->block_exp == nullptr)
+            std::cout << "  " << "ret" << std::endl;
+        else {
+            std::string result_var = Visit_AST((ExpAST*)(stmt->block_exp.get()));
+            std::cout << "  " << "ret " << result_var << std::endl;
+        }
+    }
+    else if (stmt->type == "lval") {
+        std::string result_var = Visit_AST((ExpAST*)(stmt->block_exp.get()));
+        std::variant<int, std::string> value = look_up_symbol_tables(stmt->l_val);
         assert(value.index() == 1);
         std::cout << "  " << "store " << result_var << ", " << std::get<1>(value) << std::endl;
     }
+    else if (stmt->type == "exp") {
+        if (stmt->block_exp != nullptr)
+            Visit_AST((ExpAST*)(stmt->block_exp.get()));
+    }
+    else if (stmt->type == "block")
+        Visit_AST((BlockAST*)(stmt->block_exp.get()));
+    else
+        assert(false);
 }
 
 std::string Visit_AST(const ExpAST *exp) {
@@ -119,7 +147,7 @@ std::string Visit_AST(const PrimaryExpAST *primary_exp) {
     else if (primary_exp->type == "number")
         result_var = std::to_string(primary_exp->number);
     else if (primary_exp->type == "lval") {
-        std::variant<int, std::string> value = symbol_table[primary_exp->l_val];
+        std::variant<int, std::string> value = look_up_symbol_tables(primary_exp->l_val);
         if (value.index() == 0) // const_var
             result_var = std::to_string(std::get<0>(value));
         else { // var
@@ -308,7 +336,7 @@ int Cal_AST(const PrimaryExpAST *primary_exp) {
     else if (primary_exp->type == "number")
         result = primary_exp->number;
     else if (primary_exp->type == "lval") {
-        std::variant<int, std::string> value = symbol_table[primary_exp->l_val];
+        std::variant<int, std::string> value = look_up_symbol_tables(primary_exp->l_val);
         assert(value.index() == 0);
         result = std::get<0>(value);
     }
@@ -465,7 +493,8 @@ void Visit_AST(const ConstDeclAST *const_decl) {
 }
 
 void Visit_AST(const ConstDefAST *const_def) {
-    symbol_table[const_def->ident] = Visit_AST((ConstInitValAST*)(const_def->const_init_val.get()));
+    int i = symbol_tables.size() - 1;
+    symbol_tables[i][const_def->ident] = Visit_AST((ConstInitValAST*)(const_def->const_init_val.get()));
 }
 
 int Visit_AST(const ConstInitValAST *const_init_val) {
@@ -484,9 +513,10 @@ void Visit_AST(const VarDeclAST *var_decl) {
 }
 
 void Visit_AST(const VarDefAST *var_def) {
-    std::string name = "@" + var_def->ident;
+    std::string name = "@" + var_def->ident + "_" + std::to_string(symbol_tables.size());
     std::cout << "  " << name << " = alloc i32" << std::endl;
-    symbol_table[var_def->ident] = name;
+    int i = symbol_tables.size() - 1;
+    symbol_tables[i][var_def->ident] = name;
     if (var_def->has_init_val) {
         std::string value = Visit_AST((InitValAST*)(var_def->init_val.get()));
         std::cout << "  store " << value << ", " << name << std::endl;

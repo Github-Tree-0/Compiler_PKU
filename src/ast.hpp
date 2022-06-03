@@ -57,8 +57,9 @@ public:
 
 class StmtAST : public BaseAST {
 public:
-    std::string l_val; // "" or name
-    std::unique_ptr<BaseAST> exp;
+    std::string type; // "lval", "exp", "block" or "ret"
+    std::string l_val;
+    std::unique_ptr<BaseAST> block_exp;
 
     void Dump() const override {}
 };
