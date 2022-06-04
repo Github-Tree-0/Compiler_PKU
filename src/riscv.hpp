@@ -296,7 +296,11 @@ Reg_Add Visit(const koopa_raw_load_t &load) {
 void Visit(const koopa_raw_store_t &store) {
   struct Reg_Add value = Visit(store.value);
   koopa_raw_value_t dest = store.dest;
-  assert(value_map.count(dest) && (value_map[dest].address != -1));
+  assert(value_map.count(dest));
+  if (value_map[dest].address == -1) {
+    value_map[dest].address = stack_top;
+    stack_top += 4;
+  }
   int reg = value.reg, address = value_map[dest].address;
   std::cout << "  " << "sw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
 }

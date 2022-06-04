@@ -321,19 +321,23 @@ std::string Visit_AST(const LAndExpAST *land_exp) {
         std::string label_else = "%else_" + std::to_string(if_else_cnt);
         std::string label_end = "%end_" + std::to_string(if_else_cnt);
         if_else_cnt++;
+
+        std::string result_var_ptr = "%" + std::to_string(var_cnt++);
         
+        std::cout << "  " << result_var_ptr << " = alloc i32" << std::endl;
         std::cout << "  " << "br " << left_result << ", " << label_then << ", " << label_else << std::endl;
         std::cout << label_then << ":" << std::endl;
-        result_var = "%" + std::to_string(var_cnt++);
+        std::string temp_result_var = "%" + std::to_string(var_cnt++);
         std::string right_result = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
-        std::cout << "  " << result_var << " = ne " << right_result << ", 0" << std::endl;
-        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        std::cout << "  " << temp_result_var << " = ne " << right_result << ", 0" << std::endl;
+        std::cout << "  " << "store " << temp_result_var << ", " << result_var_ptr << std::endl;
+        std::cout << "  " << "jump " << label_end << std::endl;
         std::cout << label_else << ":" << std::endl;
+        std::cout << "  " << "store 0, " << result_var_ptr << std::endl;
+        std::cout << "  " << "jump " << label_end << std::endl;
+        std::cout << label_end << ":" << std::endl;
         result_var = "%" + std::to_string(var_cnt++);
-        std::cout << "  " << result_var << " = and 0, 1" << std::endl;
-        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
-        result_var = "%" + std::to_string(var_cnt++);
-        std::cout << label_end << "(" << result_var << ": i32)" << ":" << std::endl;
+        std::cout << "  " << result_var << " = load " << result_var_ptr << std::endl;
     }
     else
         assert(false);
@@ -352,18 +356,22 @@ std::string Visit_AST(const LOrExpAST *lor_exp) {
         std::string label_end = "%end_" + std::to_string(if_else_cnt);
         if_else_cnt++;
 
+        std::string result_var_ptr = "%" + std::to_string(var_cnt++);
+
+        std::cout << "  " << result_var_ptr << " = alloc i32" << std::endl;
         std::cout << "  " << "br " << left_result << ", " << label_then << ", " << label_else << std::endl;
         std::cout << label_then << ":" << std::endl;
-        result_var = "%" + std::to_string(var_cnt++);
-        std::cout << "  " << result_var << " = or 1, 0" << std::endl;
-        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        std::cout << "  " << "store 1, " << result_var_ptr << std::endl;
+        std::cout << "  " << "jump " << label_end << std::endl;
         std::cout << label_else << ":" << std::endl;
-        result_var = "%" + std::to_string(var_cnt++);
+        std::string temp_result_var = "%" + std::to_string(var_cnt++);
         std::string right_result = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
-        std::cout << "  " << result_var << " = ne " << right_result << ", 0" << std::endl;
-        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        std::cout << "  " << temp_result_var << " = ne " << right_result << ", 0" << std::endl;
+        std::cout << "  " << "store " << temp_result_var << ", " << result_var_ptr << std::endl;
+        std::cout << "  " << "jump " << label_end << std::endl;
+        std::cout << label_end << ":" << std::endl;
         result_var = "%" + std::to_string(var_cnt++);
-        std::cout << label_end << "(" << result_var << ": i32)" << ":" << std::endl;
+        std::cout << "  " << result_var << " = load " << result_var_ptr << std::endl;
     }
     else
         assert(false);
