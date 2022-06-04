@@ -7,10 +7,13 @@
 #include <map>
 #include <variant>
 #include "ast.hpp"
+#include <sstream>
 
 int var_cnt = 0;
 std::vector<std::map<std::string, std::variant<int, std::string> > > symbol_tables;
+std::map<std::string, int> var_names;
 int if_else_cnt = 0;
+int other_cnt = 0;
 
 void Visit_AST(const CompUnitAST *comp_unit);
 void Visit_AST(const FuncDefAST *func_def);
@@ -62,12 +65,27 @@ void Visit_AST(const CompUnitAST *comp_unit) {
 }
 
 void Visit_AST(const FuncDefAST *func_def) {
+    // redir
+    std::stringstream ir_ss;
+    std::streambuf *buffer = std::cout.rdbuf();
+    std::cout.rdbuf(ir_ss.rdbuf());
+
     std::cout << "fun @" << func_def->ident << "(): ";
     std::string type = ((FuncTypeAST*)(func_def->func_type.get()))->type;
     assert(type=="int");
     std::cout << "i32 {" << std::endl;
     std::cout << "%" << "entry" << ":" << std::endl; // Blocks will have their names in the future
     Visit_AST((BlockAST*)(func_def->block.get()));
+
+    std::string ir_str = ir_ss.str(), last_line = "";
+    int pt = ir_str.length() - 2;
+    while(ir_str[pt] != '\n')
+        last_line = ir_str[pt--] + last_line;
+    if (last_line.substr(0, 6) == "%other") // deal with empty ret block
+        ir_str = ir_str.substr(0, pt+1);
+    std::cout.rdbuf(buffer);
+
+    std::cout << ir_str;
     std::cout << "}" << std::endl;
 }
 
@@ -88,6 +106,8 @@ void Visit_AST(const SimpleStmtAST *stmt) {
             std::string result_var = Visit_AST((ExpAST*)(stmt->block_exp.get()));
             std::cout << "  " << "ret " << result_var << std::endl;
         }
+        std::string other_label = "%other_" + std::to_string(other_cnt++);
+        std::cout << other_label << ":" << std::endl;
     }
     else if (stmt->type == "lval") {
         std::string result_var = Visit_AST((ExpAST*)(stmt->block_exp.get()));
@@ -297,14 +317,23 @@ std::string Visit_AST(const LAndExpAST *land_exp) {
         result_var = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
     else if (land_exp->op == "&&") {
         std::string left_result = Visit_AST((LAndExpAST*)(land_exp->land_exp.get()));
-        std::string right_result = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
-        std::string temp_var1 = "%" + std::to_string(var_cnt++);
-        std::string temp_var2 = "%" + std::to_string(var_cnt++);
-        result_var = "%" + std::to_string(var_cnt++);
+        std::string label_then = "%then_" + std::to_string(if_else_cnt);
+        std::string label_else = "%else_" + std::to_string(if_else_cnt);
+        std::string label_end = "%end_" + std::to_string(if_else_cnt);
+        if_else_cnt++;
         
-        std::cout << "  " << temp_var1 << " = ne " << left_result << ", 0" << std::endl;
-        std::cout << "  " << temp_var2 << " = ne " << right_result << ", 0" << std::endl;
-        std::cout << "  " << result_var << " = and " << temp_var1 << ", " << temp_var2 << std::endl;
+        std::cout << "  " << "br " << left_result << ", " << label_then << ", " << label_else << std::endl;
+        std::cout << label_then << ":" << std::endl;
+        result_var = "%" + std::to_string(var_cnt++);
+        std::string right_result = Visit_AST((EqExpAST*)(land_exp->eq_exp.get()));
+        std::cout << "  " << result_var << " = ne " << right_result << ", 0" << std::endl;
+        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        std::cout << label_else << ":" << std::endl;
+        result_var = "%" + std::to_string(var_cnt++);
+        std::cout << "  " << result_var << " = and 0, 1" << std::endl;
+        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        result_var = "%" + std::to_string(var_cnt++);
+        std::cout << label_end << "(" << result_var << ": i32)" << ":" << std::endl;
     }
     else
         assert(false);
@@ -318,12 +347,23 @@ std::string Visit_AST(const LOrExpAST *lor_exp) {
         result_var = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
     else if (lor_exp->op == "||") {
         std::string left_result = Visit_AST((LOrExpAST*)(lor_exp->lor_exp.get()));
-        std::string right_result = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
-        std::string temp_var = "%" + std::to_string(var_cnt++);
+        std::string label_then = "%then_" + std::to_string(if_else_cnt);
+        std::string label_else = "%else_" + std::to_string(if_else_cnt);
+        std::string label_end = "%end_" + std::to_string(if_else_cnt);
+        if_else_cnt++;
+
+        std::cout << "  " << "br " << left_result << ", " << label_then << ", " << label_else << std::endl;
+        std::cout << label_then << ":" << std::endl;
         result_var = "%" + std::to_string(var_cnt++);
-        
-        std::cout << "  " << temp_var << " = or " << left_result << ", " << right_result << std::endl;
-        std::cout << "  " << result_var << " = ne " << temp_var << ", 0" << std::endl;
+        std::cout << "  " << result_var << " = or 1, 0" << std::endl;
+        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        std::cout << label_else << ":" << std::endl;
+        result_var = "%" + std::to_string(var_cnt++);
+        std::string right_result = Visit_AST((LAndExpAST*)(lor_exp->land_exp.get()));
+        std::cout << "  " << result_var << " = ne " << right_result << ", 0" << std::endl;
+        std::cout << "  " << "jump " << label_end << "(" << result_var << ")" << std::endl;
+        result_var = "%" + std::to_string(var_cnt++);
+        std::cout << label_end << "(" << result_var << ": i32)" << ":" << std::endl;
     }
     else
         assert(false);
@@ -478,8 +518,9 @@ int Cal_AST(const LAndExpAST *land_exp) {
         result = Cal_AST((EqExpAST*)(land_exp->eq_exp.get()));
     else if (land_exp->op == "&&") {
         int left_result = Cal_AST((LAndExpAST*)(land_exp->land_exp.get()));
-        int right_result = Cal_AST((EqExpAST*)(land_exp->eq_exp.get()));
-        result = left_result && right_result;
+        if (left_result == 0)
+            return 0;
+        result = (Cal_AST((EqExpAST*)(land_exp->eq_exp.get())) != 0);
     }
     else
         assert(false);
@@ -488,13 +529,14 @@ int Cal_AST(const LAndExpAST *land_exp) {
 }
 
 int Cal_AST(const LOrExpAST *lor_exp) {
-    int result = 0;
+    int result = 1;
     if (lor_exp->op == "")
         result = Cal_AST((LAndExpAST*)(lor_exp->land_exp.get()));
     else if (lor_exp->op == "||") {
         int left_result = Cal_AST((LOrExpAST*)(lor_exp->lor_exp.get()));
-        int right_result = Cal_AST((LAndExpAST*)(lor_exp->land_exp.get()));
-        result = left_result || right_result;
+        if (left_result)
+            return 1;
+        result = (Cal_AST((LAndExpAST*)(lor_exp->land_exp.get())) != 0);
     }
     else
         assert(false);
@@ -548,7 +590,8 @@ void Visit_AST(const VarDeclAST *var_decl) {
 }
 
 void Visit_AST(const VarDefAST *var_def) {
-    std::string name = "@" + var_def->ident + "_" + std::to_string(symbol_tables.size());
+    std::string var_name = "@" + var_def->ident;
+    std::string name = var_name + "_" + std::to_string(var_names[var_name]++);
     std::cout << "  " << name << " = alloc i32" << std::endl;
     int i = symbol_tables.size() - 1;
     symbol_tables[i][var_def->ident] = name;
