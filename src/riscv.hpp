@@ -33,6 +33,8 @@ Reg_Add Visit(const koopa_raw_integer_t &integer);
 Reg_Add Visit(const koopa_raw_binary_t &binary);
 Reg_Add Visit(const koopa_raw_load_t &load);
 void Visit(const koopa_raw_store_t &store);
+void Visit(const koopa_raw_branch_t &branch);
+void Visit(const koopa_raw_jump_t &jump);
 int Alloc_register(int stat);
 
 int Alloc_register(int stat) {
@@ -125,6 +127,7 @@ void Visit(const koopa_raw_function_t &func) {
 // 访问基本块
 void Visit(const koopa_raw_basic_block_t &bb) {
   // 访问所有指令
+  std::cout << bb->name+1 << ":" << std::endl;
   Visit(bb->insts);
 }
 
@@ -169,6 +172,12 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
       break;
     case KOOPA_RVT_STORE:
       Visit(kind.data.store);
+      break;
+    case KOOPA_RVT_BRANCH:
+      Visit(kind.data.branch);
+      break;
+    case KOOPA_RVT_JUMP:
+      Visit(kind.data.jump);
       break;
     default:
       // 其他类型暂时遇不到
@@ -290,4 +299,17 @@ void Visit(const koopa_raw_store_t &store) {
   assert(value_map.count(dest) && (value_map[dest].address != -1));
   int reg = value.reg, address = value_map[dest].address;
   std::cout << "  " << "sw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
+}
+
+void Visit(const koopa_raw_branch_t &branch) {
+  std::string true_label = branch.true_bb->name+1;
+  std::string false_label = branch.false_bb->name+1;
+  int cond_reg = Visit(branch.cond).reg;
+  std::cout << "  " << "bnez " << reg_names[cond_reg] << ", " << true_label << std::endl;
+  std::cout << "  " << "j " << false_label << std::endl;
+}
+
+void Visit(const koopa_raw_jump_t &jump) {
+  std::string target = jump.target->name+1;
+  std::cout << "  " << "j " << target << std::endl;
 }
