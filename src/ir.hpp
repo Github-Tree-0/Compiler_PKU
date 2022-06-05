@@ -14,6 +14,9 @@ std::vector<std::map<std::string, std::variant<int, std::string> > > symbol_tabl
 std::map<std::string, int> var_names;
 int if_else_cnt = 0;
 int other_cnt = 0;
+int while_cnt = 0;
+std::string while_entry = "";
+std::string while_end = "";
 
 void Visit_AST(const CompUnitAST *comp_unit);
 void Visit_AST(const FuncDefAST *func_def);
@@ -121,6 +124,18 @@ void Visit_AST(const SimpleStmtAST *stmt) {
     }
     else if (stmt->type == "block")
         Visit_AST((BlockAST*)(stmt->block_exp.get()));
+    else if (stmt->type == "break") {
+        assert(while_end != "");
+        std::string other_label = while_end + "_break";
+        std::cout << "  " << "jump " << while_end << std::endl;
+        std::cout << other_label << ":" << std::endl;
+    }
+    else if (stmt->type == "continue") {
+        assert(while_entry != "");
+        std::string other_label = while_end + "_continue";
+        std::cout << "  " << "jump " << while_entry << std::endl;
+        std::cout << other_label << ":" << std::endl;
+    }
     else
         assert(false);
 }
@@ -153,6 +168,26 @@ void Visit_AST(const StmtAST *stmt) {
         Visit_AST((StmtAST*)(stmt->else_stmt.get()));
         std::cout << "  " << "jump " << label_end << std::endl;
         std::cout << label_end << ":" << std::endl;
+    }
+    else if (stmt->type == "while") {
+        std::string entry_label = "%while_entry_" + std::to_string(while_cnt);
+        std::string body_label = "%while_body_" + std::to_string(while_cnt);
+        std::string end_label = "%while_end_" + std::to_string(while_cnt);
+        
+        std::string old_entry = while_entry, old_end = while_end;
+        while_entry = entry_label; while_end = end_label;
+
+        while_cnt++;
+        std::cout << "  " << "jump " << entry_label << std::endl;
+        std::cout << entry_label << ":" << std::endl;
+        std::string cond = Visit_AST((ExpAST*)(stmt->exp_simple.get()));
+        std::cout << "  " << "br " << cond << ", " << body_label << ", " << end_label << std::endl;
+        std::cout << body_label << ":" << std::endl;
+        Visit_AST((StmtAST*)(stmt->while_stmt.get()));
+        std::cout << "  " << "jump " << entry_label << std::endl;
+        std::cout << end_label << ":" << std::endl;
+
+        while_entry = old_entry; while_end = old_end;
     }
     else
         assert(false);

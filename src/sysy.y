@@ -31,7 +31,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST IF ELSE
+%token INT RETURN CONST IF ELSE WHILE BREAK CONTINUE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 %token <str_val> RELOP EQOP ANDOP OROP
@@ -108,6 +108,13 @@ ClosedStmt
     stmt->else_stmt = unique_ptr<BaseAST>($7);
     $$ = stmt;
   }
+  | WHILE '(' Exp ')' ClosedStmt {
+    auto stmt = new StmtAST();
+    stmt->type = "while";
+    stmt->exp_simple = unique_ptr<BaseAST>($3);
+    stmt->while_stmt = unique_ptr<BaseAST>($5);
+    $$ = stmt;
+  }
   ;
 
 OpenStmt
@@ -124,6 +131,13 @@ OpenStmt
     stmt->exp_simple = unique_ptr<BaseAST>($3);
     stmt->if_stmt = unique_ptr<BaseAST>($5);
     stmt->else_stmt = unique_ptr<BaseAST>($7);
+    $$ = stmt;
+  }
+  | WHILE '(' Exp ')' OpenStmt {
+    auto stmt = new StmtAST();
+    stmt->type = "while";
+    stmt->exp_simple = unique_ptr<BaseAST>($3);
+    stmt->while_stmt = unique_ptr<BaseAST>($5);
     $$ = stmt;
   }
   ;
@@ -164,6 +178,16 @@ SimpleStmt
     auto stmt = new SimpleStmtAST();
     stmt->type = "exp";
     stmt->block_exp = nullptr;
+    $$ = stmt;
+  }
+  | BREAK ';' {
+    auto stmt = new SimpleStmtAST();
+    stmt->type = "break";
+    $$ = stmt;
+  }
+  | CONTINUE ';' {
+    auto stmt = new SimpleStmtAST();
+    stmt->type = "continue";
     $$ = stmt;
   }
   ;

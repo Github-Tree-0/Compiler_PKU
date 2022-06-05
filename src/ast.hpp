@@ -57,17 +57,18 @@ public:
 
 class StmtAST : public BaseAST {
 public:
-    std::string type; // "if", "ifelse" or "simple"
+    std::string type; // "if", "ifelse", "simple" or "while"
     std::unique_ptr<BaseAST> exp_simple;
     std::unique_ptr<BaseAST> if_stmt;
     std::unique_ptr<BaseAST> else_stmt;
+    std::unique_ptr<BaseAST> while_stmt;
 
     void Dump() const override {}
 };
 
 class SimpleStmtAST : public BaseAST {
 public:
-    std::string type; // "lval", "exp", "block" or "ret"
+    std::string type; // "lval", "exp", "block", "ret", "break" or "continue"
     std::string l_val;
     std::unique_ptr<BaseAST> block_exp;
 
