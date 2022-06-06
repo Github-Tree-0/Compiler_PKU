@@ -13,13 +13,9 @@ public:
 
 class CompUnitAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> func_def;
+    std::vector<std::unique_ptr<BaseAST> > func_def_list;
 
-    void Dump() const override {
-        std::cout << "CompUnitAST { ";
-        func_def->Dump();
-        std::cout << " }";
-    }
+    void Dump() const override {}
 };
 
 class FuncDefAST : public BaseAST {
@@ -27,14 +23,9 @@ public:
     std::unique_ptr<BaseAST> func_type;
     std::string ident;
     std::unique_ptr<BaseAST> block;
+    std::vector<std::unique_ptr<BaseAST> > func_f_params;
 
-    void Dump() const override {
-        std::cout << "FuncDefAST { ";
-        func_type->Dump();
-        std::cout << ", " << ident << ", ";
-        block->Dump();
-        std::cout << " }";
-    }
+    void Dump() const override {}
 };
 
 class BlockAST : public BaseAST {
@@ -48,11 +39,7 @@ class FuncTypeAST : public BaseAST {
 public:
     std::string type;
 
-    void Dump() const override {
-        std::cout << "FuncTypeAST { ";
-        std::cout << type;
-        std::cout << " }";
-    }
+    void Dump() const override {}
 };
 
 class StmtAST : public BaseAST {
@@ -94,9 +81,11 @@ public:
 
 class UnaryExpAST : public BaseAST {
 public:
-    std::string type; // "primary" or "unary"
+    std::string type; // "primary", "unary", "call"
     std::unique_ptr<BaseAST> exp;
     std::string op;
+    std::string ident;
+    std::vector<std::unique_ptr<BaseAST> > func_r_params;
 
     void Dump() const override {}
 };
@@ -221,6 +210,14 @@ public:
 class InitValAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
+
+    void Dump() const override {}
+};
+
+class FuncFParamAST : public BaseAST {
+public:
+    std::string ident;
+    std::string b_type;
 
     void Dump() const override {}
 };

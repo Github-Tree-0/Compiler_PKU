@@ -11,6 +11,7 @@
 
 int var_cnt = 0;
 std::vector<std::map<std::string, std::variant<int, std::string> > > symbol_tables;
+std::map<std::string, std::string> function_table;
 std::map<std::string, int> var_names;
 int if_else_cnt = 0;
 int other_cnt = 0;
@@ -39,6 +40,7 @@ std::string Visit_AST(const EqExpAST *eq_exp);
 std::string Visit_AST(const LAndExpAST *land_exp);
 std::string Visit_AST(const LOrExpAST *lor_exp);
 std::string Visit_AST(const InitValAST *init_val);
+std::string Visit_AST(const FuncFParamAST* func_f_param);
 int Visit_AST(const ConstInitValAST *const_init_val);
 int Cal_AST(const ConstExpAST *const_exp);
 int Cal_AST(const ExpAST *exp);
@@ -64,32 +66,74 @@ std::variant<int, std::string> look_up_symbol_tables(std::string l_val) {
 }
 
 void Visit_AST(const CompUnitAST *comp_unit) {
-    Visit_AST((FuncDefAST*)(comp_unit->func_def.get()));
+    int size = comp_unit->func_def_list.size();
+    for (int i = 0; i < size; ++i) {
+        Visit_AST((FuncDefAST*)(comp_unit->func_def_list[i].get()));
+        std::cout << std::endl;
+    }
 }
 
 void Visit_AST(const FuncDefAST *func_def) {
+    int old_var_cnt = var_cnt, old_if_else_cnt = if_else_cnt;
+    int old_other_cnt = other_cnt, old_while_cnt = while_cnt;
+    std::map<std::string, int> old_var_names = var_names;
+
     // redir
     std::stringstream ir_ss;
     std::streambuf *buffer = std::cout.rdbuf();
     std::cout.rdbuf(ir_ss.rdbuf());
 
-    std::cout << "fun @" << func_def->ident << "(): ";
+    std::map<std::string, std::variant<int, std::string> > symbol_table;
+    symbol_tables.push_back(symbol_table);
+
+    std::cout << "fun @" << func_def->ident;
+    std::cout << "(";
+    int size = func_def->func_f_params.size();
+    std::vector<std::string> temp_v;
+    for (int i = 0; i < size; ++i) {
+        std::string temp = Visit_AST((FuncFParamAST*)(func_def->func_f_params[i].get()));
+        if (i != size-1)
+            std::cout << ", ";
+        temp_v.push_back(temp);
+    }
+    std::cout << ")";
     std::string type = ((FuncTypeAST*)(func_def->func_type.get()))->type;
-    assert(type=="int");
-    std::cout << "i32 {" << std::endl;
-    std::cout << "%" << "entry" << ":" << std::endl; // Blocks will have their names in the future
+    function_table[func_def->ident] = type;
+    if (type == "int")
+        std::cout << ": i32 {" << std::endl;
+    else if (type == "void")
+        std::cout << " {" << std::endl;
+    else
+        assert(false);
+    std::cout << "%entry:" << std::endl; // Blocks will have their names in the future
+    size = temp_v.size();
+    for (int i = 0; i < size; ++i)
+        std::cout << temp_v[i];
     Visit_AST((BlockAST*)(func_def->block.get()));
 
     std::string ir_str = ir_ss.str(), last_line = "";
     int pt = ir_str.length() - 2;
-    while(ir_str[pt] != '\n')
+    while (ir_str[pt] != '\n')
         last_line = ir_str[pt--] + last_line;
     if (last_line.substr(0, 6) == "%other") // deal with empty ret block
         ir_str = ir_str.substr(0, pt+1);
+
+    pt = ir_str.length() - 2; last_line = "";
+    while (ir_str[pt] != '\n')
+        last_line = ir_str[pt--] + last_line;
+    if (last_line.substr(0, 5) != "  ret") { // deal with empty ret block
+        assert(type == "void");
+        ir_str += "  ret\n";
+    }
     std::cout.rdbuf(buffer);
 
     std::cout << ir_str;
     std::cout << "}" << std::endl;
+
+    symbol_tables.pop_back();
+    var_cnt = old_var_cnt; if_else_cnt = old_if_else_cnt;
+    other_cnt = old_other_cnt; while_cnt = old_while_cnt;
+    var_names = old_var_names;
 }
 
 void Visit_AST(const BlockAST *block) {
@@ -223,6 +267,32 @@ std::string Visit_AST(const UnaryExpAST *unary_exp) {
         }
         var_cnt++;
         return next_var;
+    }
+    else if (unary_exp->type == "call") {
+        assert(function_table.count(unary_exp->ident));
+        std::vector<std::string> params;
+        int size = unary_exp->func_r_params.size();
+        for (int i = 0; i < size; ++i) {
+            std::string param = Visit_AST((ExpAST*)(unary_exp->func_r_params[i].get()));
+            params.push_back(param);
+        }
+        std::string result_var = "";
+        if (function_table[unary_exp->ident] == "int") {
+            result_var = "%" + std::to_string(var_cnt++);
+            std::cout << "  " << result_var << " = call @" + unary_exp->ident << "(";
+        }
+        else if (function_table[unary_exp->ident] == "void")
+            std::cout << "  " << "call @" + unary_exp->ident << "(";
+        else
+            assert(false);
+        size = params.size();
+        for (int i = 0; i < size; ++i) {
+            std::cout << params[i];
+            if (i != size - 1)
+                std::cout << ", ";
+        }
+        std::cout << ")" << std::endl;
+        return result_var;
     }
     else {
         assert(false);
@@ -646,4 +716,15 @@ void Visit_AST(const VarDefAST *var_def) {
 
 std::string Visit_AST(const InitValAST *init_val) {
     return Visit_AST((ExpAST*)(init_val->exp.get()));
+}
+
+std::string Visit_AST(const FuncFParamAST* func_f_param) {
+    int i = symbol_tables.size() - 1;
+    assert(func_f_param->b_type == "int");
+    std::string display_name = "@param_" + func_f_param->ident, result_var = "%param_" + func_f_param->ident;
+    std::cout << display_name << ": i32";
+    symbol_tables[i][func_f_param->ident] = result_var;
+    std::string return_insts = "  " + result_var + " = alloc i32\n  store " + display_name + ", " + result_var + "\n";
+    
+    return return_insts;
 }

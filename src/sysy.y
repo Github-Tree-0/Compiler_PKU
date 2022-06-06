@@ -31,26 +31,40 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST IF ELSE WHILE BREAK CONTINUE
+%token INT RETURN CONST IF ELSE WHILE BREAK CONTINUE VOID
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 %token <str_val> RELOP EQOP ANDOP OROP
 
 // 非终结符的类型定义
 %type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp AddExp MulExp
-%type <ast_val> RelExp EqExp LAndExp LOrExp Decl ConstDecl ConstDef ConstInitVal BlockItem ConstExp
-%type <ast_val> VarDecl VarDef InitVal OpenStmt ClosedStmt SimpleStmt
-%type <vec_val> BlockItem_List ConstDef_List VarDef_List
+%type <ast_val> RelExp EqExp LAndExp LOrExp Decl ConstDecl ConstDef ConstInitVal BlockItem
+%type <ast_val> ConstExp VarDecl VarDef InitVal OpenStmt ClosedStmt SimpleStmt FuncFParam
+%type <vec_val> BlockItem_List ConstDef_List VarDef_List FuncFParams FuncRParams FuncDef_List
 %type <int_val> Number
 %type <str_val> UnaryOp BType LVal
 
 %%
 
 CompUnit
-  : FuncDef {
+  : FuncDef_List {
     auto comp_unit = make_unique<CompUnitAST>();
-    comp_unit->func_def = unique_ptr<BaseAST>($1);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($1);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      comp_unit->func_def_list.push_back(move(*iter));
     ast = move(comp_unit);
+  }
+  ;
+FuncDef_List
+  : FuncDef {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | FuncDef_List FuncDef {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($2));
+    $$ = v;
   }
   ;
 
@@ -62,12 +76,27 @@ FuncDef
     func_def->block = unique_ptr<BaseAST>($5);
     $$ = func_def;
   }
+  | FuncType IDENT '(' FuncFParams ')' Block {
+    auto func_def = new FuncDefAST();
+    func_def->func_type = unique_ptr<BaseAST>($1);
+    func_def->ident = *unique_ptr<string>($2);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($4);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      func_def->func_f_params.push_back(move(*iter));
+    func_def->block = unique_ptr<BaseAST>($6);
+    $$ = func_def;
+  }
   ;
 
 FuncType
   : INT {
     auto func_type = new FuncTypeAST();
     func_type->type = "int";
+    $$ = func_type;
+  }
+  | VOID {
+    auto func_type = new FuncTypeAST();
+    func_type->type = "void";
     $$ = func_type;
   }
   ;
@@ -239,6 +268,21 @@ UnaryExp
     unary_exp->type = "unary";
     unary_exp->op = *unique_ptr<string>($1);
     unary_exp->exp = unique_ptr<BaseAST>($2);
+    $$ = unary_exp;
+  }
+  | IDENT '(' ')' {
+    auto unary_exp = new UnaryExpAST();
+    unary_exp->type = "call";
+    unary_exp->ident = *unique_ptr<string>($1);
+    $$ = unary_exp;
+  }
+  | IDENT '(' FuncRParams ')' {
+    auto unary_exp = new UnaryExpAST();
+    unary_exp->type = "call";
+    unary_exp->ident = *unique_ptr<string>($1);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($3);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      unary_exp->func_r_params.push_back(move(*iter));
     $$ = unary_exp;
   }
   ;
@@ -526,7 +570,42 @@ VarDef_List
     v->push_back(unique_ptr<BaseAST>($3));
     $$ = v;
   }
+  ;
 
+FuncFParams
+  : FuncFParam {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | FuncFParams ',' FuncFParam {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+  ;
+
+FuncFParam
+  : BType IDENT {
+    auto func_f_param = new FuncFParamAST();
+    func_f_param->b_type = *unique_ptr<string>($1);
+    func_f_param->ident = *unique_ptr<string>($2);
+    $$ = func_f_param;
+  }
+  ;
+
+FuncRParams
+  : Exp {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | FuncRParams ',' Exp {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+  ;
 
 %%
 
