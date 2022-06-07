@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include <map>
+#include <algorithm>
 #include "koopa.h"
 
 struct Reg_Add {
@@ -12,11 +13,12 @@ struct Reg_Add {
 
 int stack_top = 0;
 int stack_size = 0;
+int ra_pos = -1; // -1 means no leaf function
 std::string reg_names[16] = { "t0", "t1", "t2", "t3", "t4", "t5", "t6", 
                               "a0", "a1", "a2", "a3", "a4", "a5", "a6", 
                               "a7", "x0" }; // "x0" is not changable
 koopa_raw_value_t registers[16]; // value
-int reg_stats[16] = {0}; // 0: empty, 1: used but evictable, 2: used and unevictable, 3: used evictable
+int reg_stats[16] = {0}; // 0: empty, 1: used but evictable, 2: used and unevictable
 
 koopa_raw_value_t present_value = 0; // 当前正访问的指令
 
@@ -35,6 +37,7 @@ Reg_Add Visit(const koopa_raw_load_t &load);
 void Visit(const koopa_raw_store_t &store);
 void Visit(const koopa_raw_branch_t &branch);
 void Visit(const koopa_raw_jump_t &jump);
+Reg_Add Visit(const koopa_raw_call_t &call);
 int Alloc_register(int stat);
 
 int Alloc_register(int stat) {
@@ -66,7 +69,6 @@ int Alloc_register(int stat) {
 
 // 访问 raw program
 void Visit(const koopa_raw_program_t &program) {
-  std::cout << "  " << ".text" << std::endl;
   // 访问所有全局变量
   Visit(program.values);
   // 访问所有函数
@@ -100,28 +102,71 @@ void Visit(const koopa_raw_slice_t &slice) {
 
 // 访问函数
 void Visit(const koopa_raw_function_t &func) {
+  stack_top = 0; stack_size = 0;
+  ra_pos = -1; // -1 means no leaf function
+  for (int i = 0; i < 15 ; ++i)
+    reg_stats[i] = 0;
+  present_value = 0; // 当前正访问的指令
+  value_map.erase(value_map.begin(), value_map.end());
+
+  std::cout << "  " << ".text" << std::endl;
   std::cout << "  " << ".globl " << (func->name+1) << std::endl;
   std::cout << func->name+1 << ":" << std::endl;
   // Calculate the stack memory space
+  int args_num = 0, save_ra = 0;
   for (size_t i = 0; i < func->bbs.len; ++i) {
     koopa_raw_basic_block_t bb_ptr = reinterpret_cast<koopa_raw_basic_block_t>(func->bbs.buffer[i]);
     for (size_t j = 0; j < bb_ptr->insts.len; ++j) {
       koopa_raw_value_t inst_ptr = reinterpret_cast<koopa_raw_value_t>(bb_ptr->insts.buffer[j]);
       if (inst_ptr->ty->tag != KOOPA_RTT_UNIT || inst_ptr->kind.tag == KOOPA_RVT_ALLOC)
         stack_size += 4;
+      if (inst_ptr->kind.tag == KOOPA_RVT_CALL) {
+        save_ra = 1;
+        args_num = std::max((int)inst_ptr->kind.data.call.args.len, args_num);
+      }
     }
   }
+  int overflow_byte = 4 * std::max(args_num - 8, 0);
+  stack_size += overflow_byte; stack_top += overflow_byte;
+  if (save_ra)
+    stack_size += 4;
+
   size_t size_mod = stack_size % 16;
   if (size_mod)
     stack_size += 16 - size_mod;
-  if (stack_size <= 2048)
-    std::cout << "  " << "addi sp, sp, " << std::to_string(-stack_size) << std::endl;
-  else {
-    std::cout << "  " << "li t0, " << std::to_string(-stack_size) << std::endl;
-    std::cout << "  " << "addi sp, sp, t0" << std::endl;
+  if (stack_size) {
+    if (stack_size <= 2048)
+      std::cout << "  " << "addi sp, sp, " << std::to_string(-stack_size) << std::endl;
+    else {
+      std::cout << "  " << "li t0, " << std::to_string(-stack_size) << std::endl;
+      std::cout << "  " << "addi sp, sp, t0" << std::endl;
+    }
+  }
+
+  if (save_ra) {
+    ra_pos = stack_size-4;
+    std::cout << "  " << "sw ra, " << std::to_string(ra_pos) << "(sp)" << std::endl;
+  }
+
+  // Deal with the params
+  for (size_t i = 0; i < func->params.len; ++i) {
+    koopa_raw_value_t param = reinterpret_cast<koopa_raw_value_t>(func->params.buffer[i]);
+    if (i < 8) { // stored in ax
+      int reg_index = i + 7;
+      registers[reg_index] = param;
+      reg_stats[reg_index] = 1;
+      struct Reg_Add var = {reg_index, -1};
+      value_map[param] = var;
+    }
+    else { // stored in the stack
+      int address = stack_size + (i - 8) * 4;
+      struct Reg_Add var = {-1, address};
+      value_map[param] = var;
+    }
   }
   
   Visit(func->bbs);
+  std::cout << std::endl;
 }
 
 // 访问基本块
@@ -179,6 +224,14 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
     case KOOPA_RVT_JUMP:
       Visit(kind.data.jump);
       break;
+    case KOOPA_RVT_CALL:
+      result_var = Visit(kind.data.call);
+      if (result_var.reg != -1)
+        value_map[value] = result_var;
+      break;
+    case KOOPA_RVT_FUNC_ARG_REF:
+      assert(false); // All args are defined upon calling the function
+      break;
     default:
       // 其他类型暂时遇不到
       assert(false);
@@ -192,13 +245,20 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
 void Visit(const koopa_raw_return_t &ret) {
   // 这里没有考虑直接li到a0的做法
   koopa_raw_value_t ret_value = ret.value;
-  struct Reg_Add result_var = Visit(ret_value);
-  std::cout << "  " << "mv a0, " << reg_names[result_var.reg] << std::endl;
-  if (stack_size <= 2048)
-    std::cout << "  " << "addi sp, sp, " << std::to_string(stack_size) << std::endl;
-  else {
-    std::cout << "  " << "li t0, " << std::to_string(stack_size) << std::endl;
-    std::cout << "  " << "addi sp, sp, t0" << std::endl;
+  if (ret_value != NULL) {
+    struct Reg_Add result_var = Visit(ret_value);
+    if (result_var.reg != 7)
+      std::cout << "  " << "mv a0, " << reg_names[result_var.reg] << std::endl;
+  }
+  if (ra_pos != -1)
+    std::cout << "  " << "lw ra, " << std::to_string(ra_pos) << "(sp)" << std::endl;
+  if (stack_size) {
+    if (stack_size <= 2048)
+      std::cout << "  " << "addi sp, sp, " << std::to_string(stack_size) << std::endl;
+    else {
+      std::cout << "  " << "li t0, " << std::to_string(stack_size) << std::endl;
+      std::cout << "  " << "addi sp, sp, t0" << std::endl;
+    }
   }
   std::cout << "  " << "ret" << std::endl;
 }
@@ -316,4 +376,63 @@ void Visit(const koopa_raw_branch_t &branch) {
 void Visit(const koopa_raw_jump_t &jump) {
   std::string target = jump.target->name+1;
   std::cout << "  " << "j " << target << std::endl;
+}
+
+Reg_Add Visit(const koopa_raw_call_t &call) {
+  struct Reg_Add result_var = {-1, -1};
+  for (int i = 0; i < call.args.len; ++i) {
+    koopa_raw_value_t arg_ptr = reinterpret_cast<koopa_raw_value_t>(call.args.buffer[i]);
+    int arg = Visit(arg_ptr).reg;
+    if (i < 8) {
+      int reg_index = i + 7;
+      if (arg != reg_index) { // mv result to ai
+        if (reg_stats[reg_index] == 1) { // clear ai
+          value_map[registers[reg_index]].reg = -1;
+          int add = value_map[registers[reg_index]].address;
+          if (add == -1) {
+            add = stack_top;
+            stack_top += 4;
+            value_map[registers[reg_index]].address = add;
+            std::cout << "  " << "sw " << reg_names[reg_index] << ", " << std::to_string(add) << "(sp)" << std::endl;
+          }
+        }
+        std::cout << "  " << "mv " << reg_names[reg_index] << ", " << reg_names[arg] << std::endl;
+        reg_stats[reg_index] = 2;
+      }
+    }
+    else {
+      int address = (i - 8) * 4;
+      std::cout << "  " << "sw " << reg_names[arg] << ", " << std::to_string(address) << "(sp)" << std::endl;
+    }
+  }
+
+  for (int i = 0; i < 15; ++i) {
+    if (reg_stats[i] == 1) {
+      int add = value_map[registers[i]].address;
+      if (add == -1) {
+        add = stack_top;
+        stack_top += 4;
+        value_map[registers[i]].address = add;
+        std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
+      }
+    }
+    reg_stats[i] = 0;
+  }
+
+  std::cout << "  " << "call " << call.callee->name+1 << std::endl;
+
+  if (present_value->ty->tag != KOOPA_RTT_UNIT) { // return value stored in a0
+    registers[7] = present_value;
+    reg_stats[7] = 1;
+    result_var.reg = 7;
+  }
+// int stack_top = 0;
+// int stack_size = 0;
+// int ra_pos = -1; // -1 means no leaf function
+// int reg_stats[16] = {0}; // 0: empty, 1: used but evictable, 2: used and unevictable
+
+// koopa_raw_value_t present_value = 0; // 当前正访问的指令
+
+// std::map<const koopa_raw_value_t, Reg_Add> value_map;
+  return result_var;
 }
