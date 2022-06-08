@@ -21,6 +21,7 @@ koopa_raw_value_t registers[16]; // value
 int reg_stats[16] = {0}; // 0: empty, 1: used but evictable, 2: used and unevictable
 
 koopa_raw_value_t present_value = 0; // 当前正访问的指令
+koopa_raw_function_t present_function = 0; // 当前正在访问的函数
 
 std::map<const koopa_raw_value_t, Reg_Add> value_map;
 
@@ -102,6 +103,10 @@ void Visit(const koopa_raw_slice_t &slice) {
 
 // 访问函数
 void Visit(const koopa_raw_function_t &func) {
+  if (func->bbs.len == 0) // decl
+    return;
+  
+  present_function = func;
   stack_top = 0; stack_size = 0;
   ra_pos = -1; // -1 means no leaf function
   for (int i = 0; i < 15 ; ++i)
@@ -172,7 +177,9 @@ void Visit(const koopa_raw_function_t &func) {
 // 访问基本块
 void Visit(const koopa_raw_basic_block_t &bb) {
   // 访问所有指令
-  std::cout << bb->name+1 << ":" << std::endl;
+  std::string bb_name(bb->name+1);
+  if (bb_name != "entry")
+    std::cout << present_function->name+1 << "_" << bb_name << ":" << std::endl;
   Visit(bb->insts);
 }
 
@@ -366,15 +373,17 @@ void Visit(const koopa_raw_store_t &store) {
 }
 
 void Visit(const koopa_raw_branch_t &branch) {
-  std::string true_label = branch.true_bb->name+1;
-  std::string false_label = branch.false_bb->name+1;
+  std::string func_name(present_function->name+1), true_name(branch.true_bb->name+1), false_name(branch.false_bb->name+1);
+  std::string true_label = func_name + "_" + true_name;
+  std::string false_label = func_name + "_" + false_name;
   int cond_reg = Visit(branch.cond).reg;
   std::cout << "  " << "bnez " << reg_names[cond_reg] << ", " << true_label << std::endl;
   std::cout << "  " << "j " << false_label << std::endl;
 }
 
 void Visit(const koopa_raw_jump_t &jump) {
-  std::string target = jump.target->name+1;
+  std::string func_name(present_function->name+1), target_name(jump.target->name+1);
+  std::string target = func_name + "_" + target_name;
   std::cout << "  " << "j " << target << std::endl;
 }
 

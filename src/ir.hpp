@@ -53,6 +53,41 @@ int Cal_AST(const EqExpAST *eq_exp);
 int Cal_AST(const LAndExpAST *land_exp);
 int Cal_AST(const LOrExpAST *lor_exp);
 std::variant<int, std::string> look_up_symbol_tables(std::string l_val);
+void Visit_Global_Decl(const DeclAST *decl);
+
+void Visit_Global_Decl(const DeclAST *decl) {
+    if (decl->type == "const_decl")
+        Visit_AST((ConstDeclAST*)(decl->decl.get()));
+    else if (decl->type == "var_decl") {
+        VarDeclAST *var_decl = (VarDeclAST*)(decl->decl.get());
+        assert(var_decl->b_type == "int"); // Only support int type
+        int size = var_decl->var_def_list.size();
+        for (int i = 0; i < size; ++i) {
+            VarDefAST *var_def = (VarDefAST*)(var_decl->var_def_list[i].get());
+
+            std::string var_name = "@" + var_def->ident;
+            std::string name = var_name + "_" + std::to_string(var_names[var_name]++);
+            std::cout << "global " << name << " = alloc i32, ";
+            int index = symbol_tables.size() - 1;
+            symbol_tables[index][var_def->ident] = name;
+            if (var_def->has_init_val) {
+                std::string value = Visit_AST((InitValAST*)(var_def->init_val.get()));
+                if (value[0] == '@' || value[0] == '%') {
+                    std::cout << "zeroinit" << std::endl;
+                    std::cout << "store " << value << ", " << name << std::endl;
+                }
+                else if (value != "0")
+                    std::cout << value << std::endl;
+                else
+                    std::cout << "zeroinit" << std::endl;
+            }
+            else
+                std::cout << "zeroinit" << std::endl;
+        }
+    }
+    else
+        assert(false);
+}
 
 std::variant<int, std::string> look_up_symbol_tables(std::string l_val) {
     int size = symbol_tables.size();
@@ -66,11 +101,36 @@ std::variant<int, std::string> look_up_symbol_tables(std::string l_val) {
 }
 
 void Visit_AST(const CompUnitAST *comp_unit) {
-    int size = comp_unit->func_def_list.size();
+    std::cout << "decl @getint(): i32" << std::endl;
+    std::cout << "decl @getch(): i32" << std::endl;
+    std::cout << "decl @getarray(*i32): i32" << std::endl;
+    std::cout << "decl @putint(i32)" << std::endl;
+    std::cout << "decl @putch(i32)" << std::endl;
+    std::cout << "decl @putarray(i32, *i32)" << std::endl;
+    std::cout << "decl @starttime()" << std::endl;
+    std::cout << "decl @stoptime()" << std::endl;
+    std::cout << std::endl;
+    function_table["getint"] = "int";
+    function_table["getch"] = "int";
+    function_table["getarray"] = "int";
+    function_table["putint"] = "void";
+    function_table["putch"] = "void";
+    function_table["putarray"] = "void";
+    function_table["starttime"] = "void";
+    function_table["stoptime"] = "void";
+
+    std::map<std::string, std::variant<int, std::string> > symbol_table;
+    symbol_tables.push_back(symbol_table);
+    int size = comp_unit->global_decl_list.size();
+    for (int i = 0; i < size; ++i)
+        Visit_Global_Decl((DeclAST*)(comp_unit->global_decl_list[i].get()));
+
+    size = comp_unit->func_def_list.size();
     for (int i = 0; i < size; ++i) {
         Visit_AST((FuncDefAST*)(comp_unit->func_def_list[i].get()));
         std::cout << std::endl;
     }
+    symbol_tables.pop_back();
 }
 
 void Visit_AST(const FuncDefAST *func_def) {
@@ -97,7 +157,7 @@ void Visit_AST(const FuncDefAST *func_def) {
         temp_v.push_back(temp);
     }
     std::cout << ")";
-    std::string type = ((FuncTypeAST*)(func_def->func_type.get()))->type;
+    std::string type = func_def->func_type;
     function_table[func_def->ident] = type;
     if (type == "int")
         std::cout << ": i32 {" << std::endl;

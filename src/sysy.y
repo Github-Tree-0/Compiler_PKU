@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include "ast.hpp"
+#include <cassert>
 
 // 声明 lexer 函数和错误处理函数
 int yylex();
@@ -37,48 +38,57 @@ using namespace std;
 %token <str_val> RELOP EQOP ANDOP OROP
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp AddExp MulExp
+%type <ast_val> FuncDef Block Stmt Exp PrimaryExp UnaryExp AddExp MulExp
 %type <ast_val> RelExp EqExp LAndExp LOrExp Decl ConstDecl ConstDef ConstInitVal BlockItem
 %type <ast_val> ConstExp VarDecl VarDef InitVal OpenStmt ClosedStmt SimpleStmt FuncFParam
-%type <vec_val> BlockItem_List ConstDef_List VarDef_List FuncFParams FuncRParams FuncDef_List
+%type <ast_val> CompUnitSupp
+%type <vec_val> BlockItem_List ConstDef_List VarDef_List FuncFParams FuncRParams
 %type <int_val> Number
-%type <str_val> UnaryOp BType LVal
+%type <str_val> UnaryOp LVal Type
 
 %%
 
 CompUnit
-  : FuncDef_List {
-    auto comp_unit = make_unique<CompUnitAST>();
-    vector<unique_ptr<BaseAST> > *v_ptr = ($1);
-    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
-      comp_unit->func_def_list.push_back(move(*iter));
+  : CompUnitSupp {
+    auto comp_unit = unique_ptr<CompUnitAST>((CompUnitAST*)($1));
     ast = move(comp_unit);
   }
   ;
-FuncDef_List
+
+CompUnitSupp
   : FuncDef {
-    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
-    v->push_back(unique_ptr<BaseAST>($1));
-    $$ = v;
+    auto comp_unit_supp = new CompUnitAST();
+    comp_unit_supp->func_def_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = comp_unit_supp;
   }
-  | FuncDef_List FuncDef {
-    vector<unique_ptr<BaseAST> > *v = ($1);
-    v->push_back(unique_ptr<BaseAST>($2));
-    $$ = v;
+  | Decl {
+    auto comp_unit_supp = new CompUnitAST();
+    comp_unit_supp->global_decl_list.push_back(unique_ptr<BaseAST>($1));
+    $$ = comp_unit_supp;
+  }
+  | CompUnitSupp FuncDef {
+    CompUnitAST *comp_unit_supp = (CompUnitAST*)($1);
+    comp_unit_supp->func_def_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = comp_unit_supp;
+  }
+  | CompUnitSupp Decl {
+    CompUnitAST *comp_unit_supp = (CompUnitAST*)($1);
+    comp_unit_supp->global_decl_list.push_back(unique_ptr<BaseAST>($2));
+    $$ = comp_unit_supp;
   }
   ;
 
 FuncDef
-  : FuncType IDENT '(' ')' Block {
+  : Type IDENT '(' ')' Block {
     auto func_def = new FuncDefAST();
-    func_def->func_type = unique_ptr<BaseAST>($1);
+    func_def->func_type = *unique_ptr<std::string>($1);
     func_def->ident = *unique_ptr<string>($2);
     func_def->block = unique_ptr<BaseAST>($5);
     $$ = func_def;
   }
-  | FuncType IDENT '(' FuncFParams ')' Block {
+  | Type IDENT '(' FuncFParams ')' Block {
     auto func_def = new FuncDefAST();
-    func_def->func_type = unique_ptr<BaseAST>($1);
+    func_def->func_type = *unique_ptr<std::string>($1);
     func_def->ident = *unique_ptr<string>($2);
     vector<unique_ptr<BaseAST> > *v_ptr = ($4);
     for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
@@ -88,16 +98,15 @@ FuncDef
   }
   ;
 
-FuncType
+
+Type
   : INT {
-    auto func_type = new FuncTypeAST();
-    func_type->type = "int";
-    $$ = func_type;
+    string *type = new string("int");
+    $$ = type;
   }
   | VOID {
-    auto func_type = new FuncTypeAST();
-    func_type->type = "void";
-    $$ = func_type;
+    string *type = new string("void");
+    $$ = type;
   }
   ;
 
@@ -435,20 +444,14 @@ Decl
   ;
 
 ConstDecl
-  : CONST BType ConstDef_List ';' {
+  : CONST Type ConstDef_List ';' {
     auto const_decl = new ConstDeclAST();
     const_decl->b_type = *unique_ptr<string>($2);
+    assert(const_decl->b_type == "int");
     vector<unique_ptr<BaseAST> > *v_ptr = ($3);
     for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
       const_decl->const_def_list.push_back(move(*iter));
     $$ = const_decl;
-  }
-  ;
-
-BType
-  : INT {
-    string *b_type = new string("int");
-    $$ = b_type;
   }
   ;
 
@@ -500,9 +503,10 @@ ConstExp
   ;
 
 VarDecl
-  : BType VarDef_List ';' {
+  : Type VarDef_List ';' {
     auto var_decl = new VarDeclAST();
     var_decl->b_type = *unique_ptr<string>($1);
+    assert(var_decl->b_type == "int");
     vector<unique_ptr<BaseAST> > *v_ptr = ($2);
     for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
       var_decl->var_def_list.push_back(move(*iter));
@@ -586,9 +590,10 @@ FuncFParams
   ;
 
 FuncFParam
-  : BType IDENT {
+  : Type IDENT {
     auto func_f_param = new FuncFParamAST();
     func_f_param->b_type = *unique_ptr<string>($1);
+    assert(func_f_param->b_type == "int");
     func_f_param->ident = *unique_ptr<string>($2);
     $$ = func_f_param;
   }

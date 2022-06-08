@@ -14,13 +14,14 @@ public:
 class CompUnitAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > func_def_list;
+    std::vector<std::unique_ptr<BaseAST> > global_decl_list;
 
     void Dump() const override {}
 };
 
 class FuncDefAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> func_type;
+    std::string func_type;
     std::string ident;
     std::unique_ptr<BaseAST> block;
     std::vector<std::unique_ptr<BaseAST> > func_f_params;
@@ -31,13 +32,6 @@ public:
 class BlockAST : public BaseAST {
 public:
     std::vector<std::unique_ptr<BaseAST> > block_item_list;
-
-    void Dump() const override {}
-};
-
-class FuncTypeAST : public BaseAST {
-public:
-    std::string type;
 
     void Dump() const override {}
 };
