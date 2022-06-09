@@ -50,7 +50,7 @@ public:
 class SimpleStmtAST : public BaseAST {
 public:
     std::string type; // "lval", "exp", "block", "ret", "break" or "continue"
-    std::string l_val;
+    std::unique_ptr<BaseAST> l_val;
     std::unique_ptr<BaseAST> block_exp;
 
     void Dump() const override {}
@@ -67,7 +67,7 @@ class PrimaryExpAST : public BaseAST {
 public:
     std::string type; // "exp", "number" or "lval"
     std::unique_ptr<BaseAST> exp;
-    std::string l_val;
+    std::unique_ptr<BaseAST> l_val;
     int number;
 
     void Dump() const override {}
@@ -158,13 +158,14 @@ class ConstDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> const_init_val;
+    std::unique_ptr<BaseAST> const_exp;
 
     void Dump() const override {}
 };
 
 class ConstInitValAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> const_exp;
+    std::vector<std::unique_ptr<BaseAST> > const_exps;
 
     void Dump() const override {}
 };
@@ -195,15 +196,15 @@ public:
 class VarDefAST : public BaseAST {
 public:
     std::string ident;
-    bool has_init_val;
     std::unique_ptr<BaseAST> init_val;
+    std::unique_ptr<BaseAST> const_exp;
 
     void Dump() const override {}
 };
 
 class InitValAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> exp;
+    std::vector<std::unique_ptr<BaseAST> > exps;
 
     void Dump() const override {}
 };
@@ -212,6 +213,14 @@ class FuncFParamAST : public BaseAST {
 public:
     std::string ident;
     std::string b_type;
+
+    void Dump() const override {}
+};
+
+class LValAST : public BaseAST {
+public:
+    std::string ident;
+    std::unique_ptr<BaseAST> exp;
 
     void Dump() const override {}
 };
