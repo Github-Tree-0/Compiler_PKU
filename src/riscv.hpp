@@ -9,7 +9,10 @@
 struct Reg_Add {
   int reg;
   int address;
+  std::string glob_add;
 };
+
+int global_var_cnt = 0;
 
 int stack_top = 0;
 int stack_size = 0;
@@ -40,6 +43,31 @@ void Visit(const koopa_raw_branch_t &branch);
 void Visit(const koopa_raw_jump_t &jump);
 Reg_Add Visit(const koopa_raw_call_t &call);
 int Alloc_register(int stat);
+Reg_Add Visit(const koopa_raw_global_alloc_t &global);
+void save_all_regs();
+
+void save_all_regs() {
+  for (int i = 0; i < 15; ++i) {
+    if (reg_stats[i] == 1) {
+      bool is_global = (value_map[registers[i]].glob_add != "");
+      if (is_global) {
+        // dirty bits stuff
+        assert(false);
+      }
+      else {
+        value_map[registers[i]].reg = -1;
+        int add = value_map[registers[i]].address;
+        if (add == -1) {
+          add = stack_top;
+          stack_top += 4;
+          value_map[registers[i]].address = add;
+          std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
+        }
+      }
+    }
+    reg_stats[i] = 0;
+  }
+}
 
 int Alloc_register(int stat) {
   for (int i = 0; i < 15; ++i) {
@@ -52,12 +80,19 @@ int Alloc_register(int stat) {
   for (int i = 0; i < 15; ++i) {
     if (reg_stats[i] == 1) {
       value_map[registers[i]].reg = -1;
-      int add = value_map[registers[i]].address;
-      if (add == -1) {
-        add = stack_top;
-        stack_top += 4;
-        value_map[registers[i]].address = add;
-        std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
+      bool is_global = (value_map[registers[i]].glob_add != "");
+      if (is_global) {
+        // 后面补充dirty bits之类的操作
+        assert(false);
+      }
+      else {
+        int add = value_map[registers[i]].address;
+        if (add == -1) {
+          add = stack_top;
+          stack_top += 4;
+          value_map[registers[i]].address = add;
+          std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
+        }
       }
       registers[i] = present_value;
       reg_stats[i] = stat;
@@ -71,7 +106,9 @@ int Alloc_register(int stat) {
 // 访问 raw program
 void Visit(const koopa_raw_program_t &program) {
   // 访问所有全局变量
+  std::cout << "  .data" << std::endl;
   Visit(program.values);
+  std::cout << std::endl;
   // 访问所有函数
   Visit(program.funcs);
 }
@@ -112,7 +149,7 @@ void Visit(const koopa_raw_function_t &func) {
   for (int i = 0; i < 15 ; ++i)
     reg_stats[i] = 0;
   present_value = 0; // 当前正访问的指令
-  value_map.erase(value_map.begin(), value_map.end());
+  std::map<const koopa_raw_value_t, Reg_Add> old_value_map = value_map;
 
   std::cout << "  " << ".text" << std::endl;
   std::cout << "  " << ".globl " << (func->name+1) << std::endl;
@@ -160,18 +197,20 @@ void Visit(const koopa_raw_function_t &func) {
       int reg_index = i + 7;
       registers[reg_index] = param;
       reg_stats[reg_index] = 1;
-      struct Reg_Add var = {reg_index, -1};
+      struct Reg_Add var = {reg_index, -1, ""};
       value_map[param] = var;
     }
     else { // stored in the stack
       int address = stack_size + (i - 8) * 4;
-      struct Reg_Add var = {-1, address};
+      struct Reg_Add var = {-1, address, ""};
       value_map[param] = var;
     }
   }
   
   Visit(func->bbs);
   std::cout << std::endl;
+
+  value_map = old_value_map;
 }
 
 // 访问基本块
@@ -188,18 +227,28 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
   // 返回时值一定在寄存器里
   koopa_raw_value_t old_value = present_value;
   present_value = value;
+  struct Reg_Add result_var = {-1, -1, ""};
+
   if (value_map.count(value)) {
     if (value_map[value].reg == -1) {
-      int reg = Alloc_register(1);
-      value_map[value].reg = reg;
-      std::cout << "  " << "lw " << reg_names[reg] << ", " << std::to_string(value_map[value].address) << "(sp)" << std::endl;
+      if (value_map[value].glob_add == "") {
+        int reg = Alloc_register(1);
+        value_map[value].reg = reg;
+        std::cout << "  " << "lw " << reg_names[reg] << ", " << std::to_string(value_map[value].address) << "(sp)" << std::endl;
+        result_var = value_map[value];
+      }
+      else { // global
+        assert(false);
+        // dirty bits needed
+      }
     }
+    else
+      result_var = value_map[value];
     present_value = old_value;
-    return value_map[value];
+    return result_var;
   }
 
   const auto &kind = value->kind;
-  struct Reg_Add result_var = {-1, -1};
   switch (kind.tag) {
     case KOOPA_RVT_RETURN:
       // 访问 return 指令
@@ -239,6 +288,10 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
     case KOOPA_RVT_FUNC_ARG_REF:
       assert(false); // All args are defined upon calling the function
       break;
+    case KOOPA_RVT_GLOBAL_ALLOC:
+      result_var = Visit(kind.data.global_alloc);
+      value_map[value] = result_var;
+      break;
     default:
       // 其他类型暂时遇不到
       assert(false);
@@ -273,7 +326,7 @@ void Visit(const koopa_raw_return_t &ret) {
 Reg_Add Visit(const koopa_raw_integer_t &integer) {
   // integer stored in registers, thus returns register number
   int32_t int_val = integer.value;
-  struct Reg_Add result_var = {-1, -1};
+  struct Reg_Add result_var = {-1, -1, ""};
   if (int_val == 0) {
     result_var.reg = 15;
     return result_var;
@@ -294,7 +347,7 @@ Reg_Add Visit(const koopa_raw_binary_t &binary) {
   struct Reg_Add right_val = Visit(binary.rhs);
   int right_register = right_val.reg;
   reg_stats[left_register] = old_stat;
-  struct Reg_Add result_var = {Alloc_register(1), -1};
+  struct Reg_Add result_var = {Alloc_register(1), -1, ""};
 
   std::string left_reg_name = reg_names[left_register], right_reg_name = reg_names[right_register];
   std::string result_reg_name = reg_names[result_var.reg];
@@ -352,11 +405,19 @@ Reg_Add Visit(const koopa_raw_binary_t &binary) {
 
 Reg_Add Visit(const koopa_raw_load_t &load) {
   koopa_raw_value_t src = load.src;
-  assert(value_map.count(src) && (value_map[src].address != -1));
-  int reg = Alloc_register(1), address = value_map[src].address;
-  struct Reg_Add result_var = {reg, address};
-  std::cout << "  " << "lw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
-
+  bool is_local = (value_map[src].address != -1), is_global = (value_map[src].glob_add != "");
+  assert(value_map.count(src) && (is_local || is_global));
+  int reg = Alloc_register(1);
+  struct Reg_Add result_var = {reg, -1, ""};
+  if (is_local) {
+    int address = value_map[src].address;
+    std::cout << "  " << "lw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
+  }
+  else { // global
+    std::string label = value_map[src].glob_add;
+    std::cout << "  " << "la s1, " << label << std::endl; // s1 是干这个的专用寄存器
+    std::cout << "  " << "lw " << reg_names[reg] << ", 0(s1)" << std::endl;
+  }
   return result_var;
 }
 
@@ -364,12 +425,21 @@ void Visit(const koopa_raw_store_t &store) {
   struct Reg_Add value = Visit(store.value);
   koopa_raw_value_t dest = store.dest;
   assert(value_map.count(dest));
-  if (value_map[dest].address == -1) {
-    value_map[dest].address = stack_top;
-    stack_top += 4;
+  bool is_global = (value_map[dest].glob_add != "");
+  int reg = value.reg;
+  if (is_global) {
+    std::string label = value_map[dest].glob_add;
+    std::cout << "  " << "la s1, " << label << std::endl;
+    std::cout << "  " << "sw " << reg_names[reg] << ", 0(s1)" << std::endl;
   }
-  int reg = value.reg, address = value_map[dest].address;
-  std::cout << "  " << "sw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
+  else { // local
+    if (value_map[dest].address == -1) {
+      value_map[dest].address = stack_top;
+      stack_top += 4;
+    }
+    int address = value_map[dest].address;
+    std::cout << "  " << "sw " << reg_names[reg] << ", " << std::to_string(address) << "(sp)" << std::endl;
+  }
 }
 
 void Visit(const koopa_raw_branch_t &branch) {
@@ -377,18 +447,20 @@ void Visit(const koopa_raw_branch_t &branch) {
   std::string true_label = func_name + "_" + true_name;
   std::string false_label = func_name + "_" + false_name;
   int cond_reg = Visit(branch.cond).reg;
+  save_all_regs();
   std::cout << "  " << "bnez " << reg_names[cond_reg] << ", " << true_label << std::endl;
   std::cout << "  " << "j " << false_label << std::endl;
 }
 
 void Visit(const koopa_raw_jump_t &jump) {
+  save_all_regs(); // start a new block, clear all registers
   std::string func_name(present_function->name+1), target_name(jump.target->name+1);
   std::string target = func_name + "_" + target_name;
   std::cout << "  " << "j " << target << std::endl;
 }
 
 Reg_Add Visit(const koopa_raw_call_t &call) {
-  struct Reg_Add result_var = {-1, -1};
+  struct Reg_Add result_var = {-1, -1, ""};
   for (int i = 0; i < call.args.len; ++i) {
     koopa_raw_value_t arg_ptr = reinterpret_cast<koopa_raw_value_t>(call.args.buffer[i]);
     int arg = Visit(arg_ptr).reg;
@@ -397,12 +469,19 @@ Reg_Add Visit(const koopa_raw_call_t &call) {
       if (arg != reg_index) { // mv result to ai
         if (reg_stats[reg_index] == 1) { // clear ai
           value_map[registers[reg_index]].reg = -1;
-          int add = value_map[registers[reg_index]].address;
-          if (add == -1) {
-            add = stack_top;
-            stack_top += 4;
-            value_map[registers[reg_index]].address = add;
-            std::cout << "  " << "sw " << reg_names[reg_index] << ", " << std::to_string(add) << "(sp)" << std::endl;
+          bool is_global = (value_map[registers[reg_index]].glob_add != "");
+          if (is_global) {
+            // dirty bits stuff
+            assert(false);
+          }
+          else {
+            int add = value_map[registers[reg_index]].address;
+            if (add == -1) {
+              add = stack_top;
+              stack_top += 4;
+              value_map[registers[reg_index]].address = add;
+              std::cout << "  " << "sw " << reg_names[reg_index] << ", " << std::to_string(add) << "(sp)" << std::endl;
+            }
           }
         }
         std::cout << "  " << "mv " << reg_names[reg_index] << ", " << reg_names[arg] << std::endl;
@@ -415,18 +494,7 @@ Reg_Add Visit(const koopa_raw_call_t &call) {
     }
   }
 
-  for (int i = 0; i < 15; ++i) {
-    if (reg_stats[i] == 1) {
-      int add = value_map[registers[i]].address;
-      if (add == -1) {
-        add = stack_top;
-        stack_top += 4;
-        value_map[registers[i]].address = add;
-        std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
-      }
-    }
-    reg_stats[i] = 0;
-  }
+  save_all_regs();
 
   std::cout << "  " << "call " << call.callee->name+1 << std::endl;
 
@@ -435,13 +503,26 @@ Reg_Add Visit(const koopa_raw_call_t &call) {
     reg_stats[7] = 1;
     result_var.reg = 7;
   }
-// int stack_top = 0;
-// int stack_size = 0;
-// int ra_pos = -1; // -1 means no leaf function
-// int reg_stats[16] = {0}; // 0: empty, 1: used but evictable, 2: used and unevictable
+  
+  return result_var;
+}
 
-// koopa_raw_value_t present_value = 0; // 当前正访问的指令
+Reg_Add Visit(const koopa_raw_global_alloc_t &global) {
+  std::string label = "global_var_" + std::to_string(global_var_cnt++);
+  std::cout << "  " << ".globl " << label << std::endl;
+  std::cout << label << ":" << std::endl;
 
-// std::map<const koopa_raw_value_t, Reg_Add> value_map;
+  const auto &kind = global.init->kind;
+  if (kind.tag == KOOPA_RVT_INTEGER) {
+    int32_t int_val = kind.data.integer.value;
+    std::cout << "  " << ".word " << std::to_string(int_val) << std::endl;
+  }
+  else if (kind.tag == KOOPA_RVT_ZERO_INIT)
+    std::cout << "  .zero 4" << std::endl;
+  else
+    assert(false);
+
+  struct Reg_Add result_var = {-1, -1, label};
+
   return result_var;
 }
