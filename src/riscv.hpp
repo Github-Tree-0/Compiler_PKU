@@ -148,7 +148,7 @@ void Visit(const koopa_raw_function_t &func) {
   present_function = func;
   stack_top = 0; stack_size = 0;
   ra_pos = -1; // -1 means no leaf function
-  for (int i = 0; i < 15 ; ++i)
+  for (int i = 0; i < 15; ++i)
     reg_stats[i] = 0;
   present_value = 0; // 当前正访问的指令
   std::map<const koopa_raw_value_t, Reg_Add> old_value_map = value_map;
@@ -339,7 +339,7 @@ void Visit(const koopa_raw_return_t &ret) {
   if (ra_pos != -1)
     std::cout << "  " << "lw ra, " << std::to_string(ra_pos) << "(sp)" << std::endl;
   if (stack_size) {
-    if (stack_size <= 2048)
+    if (stack_size <= 2047)
       std::cout << "  " << "addi sp, sp, " << std::to_string(stack_size) << std::endl;
     else {
       std::cout << "  " << "li t0, " << std::to_string(stack_size) << std::endl;
