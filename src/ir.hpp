@@ -39,9 +39,9 @@ std::string Visit_AST(const RelExpAST *rel_exp);
 std::string Visit_AST(const EqExpAST *eq_exp);
 std::string Visit_AST(const LAndExpAST *land_exp);
 std::string Visit_AST(const LOrExpAST *lor_exp);
-std::vector<std::string> Visit_AST(const InitValAST *init_val);
+void Visit_AST(const InitValAST *init_val, std::vector<std::string> &array, std::vector<int> sizes);
 std::string Visit_AST(const FuncFParamAST* func_f_param);
-std::vector<int> Visit_AST(const ConstInitValAST *const_init_val);
+void Visit_AST(const ConstInitValAST *const_init_val, int *array, std::vector<int> sizes);
 int Cal_AST(const ConstExpAST *const_exp);
 int Cal_AST(const ExpAST *exp);
 int Cal_AST(const UnaryExpAST *unary_exp);
@@ -58,53 +58,61 @@ void Visit_Global_Decl(const DeclAST *decl);
 void Visit_Global_Decl(const DeclAST *decl) {
     if (decl->type == "const_decl") {
         ConstDeclAST *const_decl = (ConstDeclAST*)(decl->decl.get());
-        int size = const_decl->const_def_list.size();
-        for (int i = 0; i < size; ++i) {
+        int size_ = const_decl->const_def_list.size();
+        for (int i = 0; i < size_; ++i) {
             ConstDefAST *const_def = (ConstDefAST*)(const_decl->const_def_list[i].get());
-            if (const_def->const_exp == nullptr)
+            if (const_def->const_exps.size() == 0)
                 Visit_AST(const_def);
             else {
                 std::string arr_name = "@" + const_def->ident;
                 std::string name = arr_name + "_" + std::to_string(var_names[arr_name]++);
                 int index = symbol_tables.size() - 1;
                 symbol_tables[index][const_def->ident] = name;
-                std::vector<int> init_v = Visit_AST((ConstInitValAST*)(const_def->const_init_val.get()));
-                int length = Cal_AST((ConstExpAST*)(const_def->const_exp.get())), size = init_v.size();
-                std::cout << "global " << name << " = alloc [i32, " << std::to_string(length) << "], {";
-                for (int j = 0; j < length; ++j) {
-                    if (j < size)
-                        std::cout << std::to_string(init_v[j]);
+                ConstInitValAST *init_val = (ConstInitValAST *)(const_def->const_init_val.get());
+                int sizes_size = const_def->const_exps.size(), len = 1;
+                std::vector<int> sizes;
+                std::string alloc_str;
+                for (int j = sizes_size - 1; j >= 0; --j) {
+                    int size = Cal_AST((ConstExpAST*)(const_def->const_exps[j].get()));
+                    len *= size;
+                    sizes.push_back(size);
+                    if (j == sizes_size - 1)
+                        alloc_str = "[i32, " + std::to_string(size) + "]";
                     else
-                        std::cout << "0";
-                    if (j != length - 1)
+                        alloc_str = "[" + alloc_str + ", " + std::to_string(size) + "]";
+                }
+                std::cout << "global " << name << " = alloc " << alloc_str << ", {";
+                int *array = (int *)malloc(sizeof(int) * len);
+                Visit_AST(init_val, array, sizes);
+                for (int j = 0; j < len; ++j) {
+                    std::cout << std::to_string(*(array+j));
+                    if (j != len - 1)
                         std::cout << ", ";
                 }
                 std::cout << "}" << std::endl;
+                free(array);
             }
         }
-        //Visit_AST((ConstDeclAST*)(decl->decl.get()));
-
     }
     else if (decl->type == "var_decl") {
         VarDeclAST *var_decl = (VarDeclAST*)(decl->decl.get());
         assert(var_decl->b_type == "int"); // Only support int type
-        int size = var_decl->var_def_list.size();
-        for (int i = 0; i < size; ++i) {
+        int size_ = var_decl->var_def_list.size();
+        for (int i = 0; i < size_; ++i) {
             VarDefAST *var_def = (VarDefAST*)(var_decl->var_def_list[i].get());
             
             std::string var_name = "@" + var_def->ident;
             std::string name = var_name + "_" + std::to_string(var_names[var_name]++);
             int index = symbol_tables.size() - 1;
             symbol_tables[index][var_def->ident] = name;
-            if (var_def->const_exp == nullptr) { // var    
+            InitValAST *init_val = (InitValAST*)(var_def->init_val.get());
+
+            if (var_def->const_exps.size() == 0) { // var    
                 std::cout << "global " << name << " = alloc i32, ";
-                if (var_def->init_val != nullptr) {
-                    std::string value = Visit_AST((InitValAST*)(var_def->init_val.get()))[0];
-                    if (value[0] == '@' || value[0] == '%') {
-                        std::cout << "zeroinit" << std::endl;
-                        std::cout << "store " << value << ", " << name << std::endl;
-                    }
-                    else if (value != "0")
+                if (init_val->exp != nullptr) {
+                    std::string value = Visit_AST((ExpAST*)(init_val->exp.get()));
+                    assert(value[0] == '@' && value[0] == '%');
+                    if (value != "0")
                         std::cout << value << std::endl;
                     else
                         std::cout << "zeroinit" << std::endl;
@@ -113,15 +121,24 @@ void Visit_Global_Decl(const DeclAST *decl) {
                     std::cout << "zeroinit" << std::endl;
             }
             else { // array
-                std::vector<std::string> init_v = Visit_AST((InitValAST*)(var_def->init_val.get()));
-                int length = Cal_AST((ConstExpAST*)(var_def->const_exp.get())), size = init_v.size();
-                std::cout << "global " << name << " = alloc [i32, " << std::to_string(length) << "], {";
-                for (int j = 0; j < length; ++j) {
-                    if (j < size)
-                        std::cout << init_v[j];
+                int sizes_size = var_def->const_exps.size(), len = 1;
+                std::vector<int> sizes;
+                std::string alloc_str;
+                for (int j = sizes_size - 1; j >= 0; --j) {
+                    int size = Cal_AST((ConstExpAST*)(var_def->const_exps[j].get()));
+                    len *= size;
+                    sizes.push_back(size);
+                    if (j == sizes_size - 1)
+                        alloc_str = "[i32, " + std::to_string(size) + "]";
                     else
-                        std::cout << "0";
-                    if (j != length - 1)
+                        alloc_str = "[" + alloc_str + ", " + std::to_string(size) + "]";
+                }
+                std::cout << "global " << name << " = alloc " << alloc_str << ", {";
+                std::vector<std::string> array;
+                Visit_AST(init_val, array, sizes);
+                for (int j = 0; j < len; ++j) {
+                    std::cout << array[j];
+                    if (j != len - 1)
                         std::cout << ", ";
                 }
                 std::cout << "}" << std::endl;
@@ -264,13 +281,18 @@ void Visit_AST(const SimpleStmtAST *stmt) {
         LValAST *l_val = (LValAST *)(stmt->l_val.get());
         std::variant<int, std::string> value = look_up_symbol_tables(l_val->ident);
         assert(value.index() == 1);
-        if (l_val->exp == nullptr)
+        int size = l_val->exps.size();
+        if (size == 0)
             std::cout << "  " << "store " << result_var << ", " << std::get<1>(value) << std::endl;
-        else {
-            int index = Cal_AST((ExpAST*)(l_val->exp.get()));
-            std::string ptr_var = "%" + std::to_string(var_cnt++);
-            std::cout << "  " << ptr_var << " = getelemptr " << std::get<1>(value) << ", " << std::to_string(index) << std::endl;
-            std::cout << "  " << "store " << result_var << ", " << ptr_var << std::endl;
+        else { // array
+            std::string ptr_val, add = std::get<1>(value);
+            for (int i = 0; i < size; ++i) {
+                std::string index = Visit_AST((ExpAST*)(l_val->exps[i].get()));
+                ptr_val = "%" + std::to_string(var_cnt++);
+                std::cout << "  " << ptr_val << " = getelemptr " << add << ", " << index << std::endl;
+                add = ptr_val;
+            }
+            std::cout << "  " << "store " << result_var << ", " << ptr_val << std::endl;
         }
     }
     else if (stmt->type == "exp") {
@@ -424,13 +446,18 @@ std::string Visit_AST(const PrimaryExpAST *primary_exp) {
             result_var = std::to_string(std::get<0>(value));
         else { // var
             result_var = "%" + std::to_string(var_cnt++);
-            if (l_val->exp == nullptr)
+            int size = l_val->exps.size();
+            if (size == 0)
                 std::cout << "  " << result_var << " = load " << std::get<1>(value) << std::endl;
-            else {
-                std::string ptr_var = "%" + std::to_string(var_cnt++);
-                int index = Cal_AST((ExpAST*)(l_val->exp.get()));
-                std::cout << "  " << ptr_var << " = getelemptr " << std::get<1>(value) << ", " << std::to_string(index) << std::endl;
-                std::cout << "  " << result_var << " = load " << ptr_var << std::endl;
+            else { // array
+                std::string ptr_val, add = std::get<1>(value);
+                for (int i = 0; i < size; ++i) {
+                    std::string index = Visit_AST((ExpAST*)(l_val->exps[i].get()));
+                    ptr_val = "%" + std::to_string(var_cnt++);
+                    std::cout << "  " << ptr_val << " = getelemptr " << add << ", " << index << std::endl;
+                    add = ptr_val;
+                }
+                std::cout << "  " << result_var << " = load " << ptr_val << std::endl;
             }
         }
     }
@@ -803,36 +830,80 @@ void Visit_AST(const ConstDeclAST *const_decl) {
 }
 
 void Visit_AST(const ConstDefAST *const_def) {
-    std::vector<int> def_v = Visit_AST((ConstInitValAST*)(const_def->const_init_val.get()));
     int index = symbol_tables.size() - 1;
-    if (const_def->const_exp == nullptr) { // var
-        assert(def_v.size() == 1);
-        symbol_tables[index][const_def->ident] = def_v[0];
+    ConstInitValAST *init_val = (ConstInitValAST *)(const_def->const_init_val.get());
+    if (const_def->const_exps.size() == 0) { // var
+        assert(init_val->const_exp != nullptr);
+        int val = Cal_AST((ConstExpAST*)(init_val->const_exp.get()));
+        symbol_tables[index][const_def->ident] = val;
     }
     else { // array
         std::string arr_name = "@" + const_def->ident;
         std::string name = arr_name + "_" + std::to_string(var_names[arr_name]++);
         symbol_tables[index][const_def->ident] = name;
-        int length = Cal_AST((ConstExpAST*)(const_def->const_exp.get())), size = def_v.size();
-        std::cout << "  " << name << " = alloc [i32, " << std::to_string(length) << "]" << std::endl;
-        for (int i = 0; i < length; ++i) {
-            std::string ptr_var = "%" + std::to_string(var_cnt++);
-            std::cout << "  " << ptr_var << " = getelemptr " << name << ", " << std::to_string(i) << std::endl;
-            if (i < size)
-                std::cout << "  " << "store" << std::to_string(def_v[i]) << ", " << ptr_var << std::endl;
+        int sizes_size = const_def->const_exps.size(), len = 1;
+        std::vector<int> sizes;
+        std::string alloc_str;
+        for (int i = sizes_size - 1; i >= 0; --i) {
+            int size = Cal_AST((ConstExpAST*)(const_def->const_exps[i].get()));
+            len *= size;
+            sizes.push_back(size);
+            if (i == sizes_size - 1)
+                alloc_str = "[i32, " + std::to_string(size) + "]";
             else
-                std::cout << "  " << "store 0, " << ptr_var << std::endl;
+                alloc_str = "[" + alloc_str + ", " + std::to_string(size) + "]";
         }
+        std::cout << "  " << name << " = alloc " << alloc_str << std::endl;
+        int *array = (int *)malloc(sizeof(int) * len);
+        Visit_AST(init_val, array, sizes);
+        for (int i = 0; i < len; ++i) {
+            int index, temp_len = len, pos = i;
+            std::string ptr_val, add = name;
+            for (int j = sizes_size - 1; j >= 0; --j) {
+                temp_len /= sizes[j];
+                index = pos / temp_len;
+                pos -= index * temp_len;
+                ptr_val = "%" + std::to_string(var_cnt++);
+                std::cout << "  " << ptr_val << " = getelemptr " << add << ", " << std::to_string(index) << std::endl;
+                add = ptr_val;
+            }
+            std::cout << "  " << "store" << std::to_string(*(array+i)) << ", " << ptr_val << std::endl;
+        }
+        free(array);
     }
 }
 
-std::vector<int> Visit_AST(const ConstInitValAST *const_init_val) {
-    std::vector<int> v;
-    int size = const_init_val->const_exps.size();
-    for (int i = 0; i < size; ++i)
-        v.push_back(Cal_AST((ConstExpAST*)(const_init_val->const_exps[i].get())));
-
-    return v;
+void Visit_AST(const ConstInitValAST *const_init_val, int *array, std::vector<int> sizes) {
+    int sizes_size = sizes.size(), pos = 0;
+    assert(const_init_val->const_exp == nullptr);
+    int size = const_init_val->const_init_vals.size();
+    for (int i = 0; i < size; ++i) {
+        ConstInitValAST *init_val = (ConstInitValAST *)(const_init_val->const_init_vals[i].get());
+        if (init_val->const_exp != nullptr) { // is a integer
+            *(array+pos) = Cal_AST((ConstExpAST*)(init_val->const_exp.get()));
+            pos++;
+        }
+        else { // is an aggregate
+            std::vector<int> new_sizes;
+            int len = 1;
+            for (int j = 0; j <= sizes_size; ++j) { // sizes中 0 是最后一个维度
+                len *= sizes[j];
+                if (pos % len == 0)
+                    new_sizes.push_back(sizes[j]);
+                else {
+                    len /= sizes[j];
+                    break;
+                }
+            }
+            Visit_AST(init_val, array+pos, new_sizes);
+            pos += len;
+        }
+    }
+    int len = 1;
+    for (int i = 0; i < sizes_size; ++i)
+        len *= sizes[i];
+    for ( ; pos < len; ++pos)
+        *(array+pos) = 0;
 }
 
 int Cal_AST(const ConstExpAST *const_exp) {
@@ -847,44 +918,84 @@ void Visit_AST(const VarDeclAST *var_decl) {
 }
 
 void Visit_AST(const VarDefAST *var_def) {
-    if (var_def->const_exp == nullptr) {
+    int index = symbol_tables.size() - 1;
+    InitValAST *init_val = (InitValAST*)(var_def->init_val.get());
+    if (var_def->const_exps.size() == 0) {
         std::string var_name = "@" + var_def->ident;
         std::string name = var_name + "_" + std::to_string(var_names[var_name]++);
         std::cout << "  " << name << " = alloc i32" << std::endl;
-        int i = symbol_tables.size() - 1;
-        symbol_tables[i][var_def->ident] = name;
-        if (var_def->init_val != nullptr) {
-            std::vector<std::string> value_v = Visit_AST((InitValAST*)(var_def->init_val.get()));
-            assert(value_v.size() == 1);
-            std::cout << "  store " << value_v[0] << ", " << name << std::endl;
+        symbol_tables[index][var_def->ident] = name;
+        if (init_val->exp != nullptr) {
+            std::string val = Visit_AST((ExpAST*)(init_val->exp.get()));
+            std::cout << "  store " << val << ", " << name << std::endl;
         }
     }
     else { // array
         std::string arr_name = "@" + var_def->ident;
         std::string name = arr_name + "_" + std::to_string(var_names[arr_name]++);
-        int index = symbol_tables.size() - 1;
         symbol_tables[index][var_def->ident] = name;
-        int length = Cal_AST((ConstExpAST*)(var_def->const_exp.get()));
-        std::cout << "  " << name << " = alloc [i32, " << std::to_string(length) << "]" << std::endl;
-        std::vector<std::string> value_v = Visit_AST((InitValAST*)(var_def->init_val.get()));
-        int size = value_v.size();
-        for (int i = 0; i < length; ++i) {
-            std::string ptr_var = "%" + std::to_string(var_cnt++);
-            std::cout << "  " << ptr_var << " = getelemptr " << name << ", " << std::to_string(i) << std::endl;
-            if (i < size)
-                std::cout << "  " << "store " << value_v[i] << ", " << ptr_var << std::endl;
+        int sizes_size = var_def->const_exps.size(), len = 1;
+        std::vector<int> sizes;
+        std::string alloc_str;
+        for (int i = sizes_size - 1; i >= 0; --i) {
+            int size = Cal_AST((ConstExpAST*)(var_def->const_exps[i].get()));
+            len *= size;
+            sizes.push_back(size);
+            if (i == sizes_size - 1)
+                alloc_str = "[i32, " + std::to_string(size) + "]";
             else
-                std::cout << "  " << "store 0, " << ptr_var << std::endl;
+                alloc_str = "[" + alloc_str + ", " + std::to_string(size) + "]";
+        }
+        std::cout << "  " << name << " = alloc " << alloc_str << std::endl;
+        std::vector<std::string> array;
+        Visit_AST(init_val, array, sizes);
+        for (int i = 0; i < len; ++i) {
+            int index, temp_len = len, pos = i;
+            std::string ptr_val, add = name;
+            for (int j = sizes_size - 1; j >= 0; --j) {
+                temp_len /= sizes[j];
+                index = pos / temp_len;
+                pos -= index * temp_len;
+                ptr_val = "%" + std::to_string(var_cnt++);
+                std::cout << "  " << ptr_val << " = getelemptr " << add << ", " << std::to_string(index) << std::endl;
+                add = ptr_val;
+            }
+            std::cout << "  " << "store " << array[i] << ", " << ptr_val << std::endl;
         }
     }
 }
 
-std::vector<std::string> Visit_AST(const InitValAST *init_val) {
-    std::vector<std::string> v;
-    int size = init_val->exps.size();
-    for (int i = 0; i < size; ++i)
-        v.push_back(Visit_AST((ExpAST*)(init_val->exps[i].get())));
-    return v;
+void Visit_AST(const InitValAST *init_val, std::vector<std::string> &array, std::vector<int> sizes) {
+    int sizes_size = sizes.size(), pos = 0;
+    assert(init_val->exp == nullptr);
+    int size = init_val->init_vals.size();
+    for (int i = 0; i < size; ++i) {
+        InitValAST *init_val_ = (InitValAST*)(init_val->init_vals[i].get());
+        if (init_val_->exp != nullptr) {
+            array.push_back(Visit_AST((ExpAST*)(init_val_->exp.get())));
+            pos++;
+        }
+        else {
+            std::vector<int> new_sizes;
+            int len = 1;
+            for (int j = 0; j <= sizes_size; ++j) { // sizes中 0 是最后一个维度
+                len *= sizes[j];
+                if (pos % len == 0)
+                    new_sizes.push_back(sizes[j]);
+                else {
+                    len /= sizes[j];
+                    break;
+                }
+            }
+            Visit_AST(init_val_, array, new_sizes);
+            pos += len;
+        }
+    }
+    int len = 1;
+    for (int i = 0; i < sizes_size; ++i)
+        len *= sizes[i];
+    for ( ; pos < len; ++pos)
+        array.push_back("0");
 }
 
 std::string Visit_AST(const FuncFParamAST* func_f_param) {

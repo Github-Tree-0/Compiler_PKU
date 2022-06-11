@@ -158,14 +158,15 @@ class ConstDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> const_init_val;
-    std::unique_ptr<BaseAST> const_exp;
+    std::vector<std::unique_ptr<BaseAST> > const_exps;
 
     void Dump() const override {}
 };
 
 class ConstInitValAST : public BaseAST {
 public:
-    std::vector<std::unique_ptr<BaseAST> > const_exps;
+    std::unique_ptr<BaseAST> const_exp;
+    std::vector<std::unique_ptr<BaseAST> > const_init_vals;
 
     void Dump() const override {}
 };
@@ -197,14 +198,15 @@ class VarDefAST : public BaseAST {
 public:
     std::string ident;
     std::unique_ptr<BaseAST> init_val;
-    std::unique_ptr<BaseAST> const_exp;
+    std::vector<std::unique_ptr<BaseAST> > const_exps;
 
     void Dump() const override {}
 };
 
 class InitValAST : public BaseAST {
 public:
-    std::vector<std::unique_ptr<BaseAST> > exps;
+    std::unique_ptr<BaseAST> exp;
+    std::vector<std::unique_ptr<BaseAST> > init_vals;
 
     void Dump() const override {}
 };
@@ -220,7 +222,7 @@ public:
 class LValAST : public BaseAST {
 public:
     std::string ident;
-    std::unique_ptr<BaseAST> exp;
+    std::vector<std::unique_ptr<BaseAST> > exps;
 
     void Dump() const override {}
 };

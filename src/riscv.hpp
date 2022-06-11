@@ -47,6 +47,17 @@ Reg_Add Visit(const koopa_raw_global_alloc_t &global);
 Reg_Add Visit(const koopa_raw_get_elem_ptr_t &get_elem_ptr);
 void save_all_regs();
 void Visit(const koopa_raw_aggregate_t &aggregate);
+int Cal_array_len(koopa_raw_type_t ty);
+
+int Cal_array_len(koopa_raw_type_t ty) {
+  if (ty->tag == KOOPA_RTT_INT32)
+    return 1;
+  else if (ty->tag == KOOPA_RTT_ARRAY)
+    return ty->data.array.len * Cal_array_len(ty->data.array.base);
+  else 
+    assert(false);
+  return 0;
+}
 
 void save_all_regs() {
   for (int i = 0; i < 15; ++i) {
@@ -162,18 +173,14 @@ void Visit(const koopa_raw_function_t &func) {
     koopa_raw_basic_block_t bb_ptr = reinterpret_cast<koopa_raw_basic_block_t>(func->bbs.buffer[i]);
     for (size_t j = 0; j < bb_ptr->insts.len; ++j) {
       koopa_raw_value_t inst_ptr = reinterpret_cast<koopa_raw_value_t>(bb_ptr->insts.buffer[j]);
-      if (inst_ptr->ty->tag != KOOPA_RTT_UNIT)
-        stack_size += 4;
-      else if (inst_ptr->kind.tag == KOOPA_RVT_ALLOC) {
+      if (inst_ptr->kind.tag == KOOPA_RVT_ALLOC) {
         if (inst_ptr->ty->tag == KOOPA_RTT_POINTER)
-          stack_top += 4;
-        else if (inst_ptr->ty->tag == KOOPA_RTT_ARRAY) {
-          int len = inst_ptr->ty->data.array.len;
-          stack_top += 4 * len;
-        }
+          stack_size += 4 * Cal_array_len(inst_ptr->ty->data.pointer.base);
         else
           assert(false);
       }
+      else if (inst_ptr->ty->tag != KOOPA_RTT_UNIT)
+        stack_size += 4;
       if (inst_ptr->kind.tag == KOOPA_RVT_CALL) {
         save_ra = 1;
         args_num = std::max((int)inst_ptr->kind.data.call.args.len, args_num);
@@ -277,11 +284,7 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
     case KOOPA_RVT_ALLOC:
       result_var.address = stack_top;
       if (value->ty->tag == KOOPA_RTT_POINTER)
-        stack_top += 4;
-      else if (value->ty->tag == KOOPA_RTT_ARRAY) {
-        int len = value->ty->data.array.len;
-        stack_top += 4 * len;
-      }
+        stack_top += 4 * Cal_array_len(value->ty->data.pointer.base);
       else 
         assert(false);
       value_map[value] = result_var;
@@ -433,7 +436,7 @@ Reg_Add Visit(const koopa_raw_load_t &load) {
   koopa_raw_value_t src = load.src;
   int reg = Alloc_register(1);
   struct Reg_Add result_var = {reg, -1, ""};
-  if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR) { // %x
+  if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR || src->kind.tag == KOOPA_RVT_GET_PTR) { // %x
     assert(value_map.count(src));
     reg_stats[reg] = 2;
     int add_reg = Visit(src).reg;
@@ -460,7 +463,7 @@ void Visit(const koopa_raw_store_t &store) {
   int reg = Visit(store.value).reg;
   koopa_raw_value_t dest = store.dest;
   assert(value_map.count(dest));
-  if (dest->kind.tag == KOOPA_RVT_GET_ELEM_PTR) { // %x
+  if (dest->kind.tag == KOOPA_RVT_GET_ELEM_PTR || dest->kind.tag == KOOPA_RVT_GET_PTR) { // %x
     int reg_stat = reg_stats[reg];
     reg_stats[reg] = 2;
     int add_reg = Visit(dest).reg;
@@ -574,37 +577,55 @@ Reg_Add Visit(const koopa_raw_global_alloc_t &global) {
 
 Reg_Add Visit(const koopa_raw_get_elem_ptr_t &get_elem_ptr) {
   koopa_raw_value_t src = get_elem_ptr.src;
-  bool is_local = (value_map[src].address != -1), is_global = (value_map[src].glob_add != "");
-  assert(value_map.count(src) && (is_local || is_global));
+  assert(src->ty->data.pointer.base->tag == KOOPA_RTT_ARRAY); // 一定是数组指针
+  bool is_local = (value_map[src].address != -1); //is_global = (value_map[src].glob_add != "");
+  assert(value_map.count(src));
   struct Reg_Add result_var = {-1, -1, ""};
   int index_reg = Visit(get_elem_ptr.index).reg;
   
-  if (is_local) {
-    int address = value_map[src].address;
-    if (address < -2048 || address >= 2048) {
-      std::cout << "  " << "li s1, " << std::to_string(address) << std::endl;
-      std::cout << "  " << "add s2, sp, s1" << std::endl;
-    }
-    else
-      std::cout << "  " << "addi s2, sp, " << std::to_string(address) << std::endl;
-    // s2 中是基地址
-    std::cout << "  " << "li s1, 2" << std::endl;
-    std::cout << "  " << "sll s1, " << reg_names[index_reg] << ", s1" << std::endl;
-    // s1 中是offset
+  if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR || src->kind.tag == KOOPA_RVT_GET_PTR) {
+    int reg_stat = reg_stats[index_reg];
+    reg_stats[index_reg] = 2;
+    int add_reg = Visit(src).reg; // 里面是基地址
+    reg_stats[index_reg] = reg_stat;
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+    std::cout << "  " << "mul s1, s1, " << reg_names[index_reg] << std::endl;
+    reg_stat = reg_stats[add_reg];
+    reg_stats[add_reg] = 2;
     int reg = Alloc_register(1);
-    result_var.reg = reg;
-    std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+    reg_stats[add_reg] = reg_stat;
+    std::cout << "  " << "add " << reg_names[reg] << ", s1, " << reg_names[add_reg] << std::endl;
   }
-  else { // global
-    std::string label = value_map[src].glob_add;
-    std::cout << "  " << "la s2, " << label << std::endl;
-    // s2 中是基地址
-    std::cout << "  " << "li s1, 2" << std::endl;
-    std::cout << "  " << "sll s1, " << reg_names[index_reg] << ", s1" << std::endl;
-    // s1 中是offset
-    int reg = Alloc_register(1);
-    result_var.reg = reg;
-    std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+  else {
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    if (is_local) {
+      int address = value_map[src].address;
+      if (address < -2048 || address >= 2048) {
+        std::cout << "  " << "li s1, " << std::to_string(address) << std::endl;
+        std::cout << "  " << "add s2, sp, s1" << std::endl;
+      }
+      else
+        std::cout << "  " << "addi s2, sp, " << std::to_string(address) << std::endl;
+      // s2 中是基地址
+      std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+      std::cout << "  " << "mul s1, " << reg_names[index_reg] << ", s1" << std::endl;
+      // s1 中是offset
+      int reg = Alloc_register(1);
+      result_var.reg = reg;
+      std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+    }
+    else { // global
+      std::string label = value_map[src].glob_add;
+      std::cout << "  " << "la s2, " << label << std::endl;
+      // s2 中是基地址
+      std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+      std::cout << "  " << "mul s1, " << reg_names[index_reg] << ", s1" << std::endl;
+      // s1 中是offset
+      int reg = Alloc_register(1);
+      result_var.reg = reg;
+      std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+    }
   }
 
   return result_var;

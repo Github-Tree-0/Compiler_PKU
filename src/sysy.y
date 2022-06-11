@@ -42,9 +42,10 @@ using namespace std;
 %type <ast_val> RelExp EqExp LAndExp LOrExp Decl ConstDecl ConstDef ConstInitVal BlockItem
 %type <ast_val> ConstExp VarDecl VarDef InitVal OpenStmt ClosedStmt SimpleStmt FuncFParam
 %type <ast_val> CompUnitSupp LVal
-%type <vec_val> BlockItem_List ConstDef_List VarDef_List FuncFParams FuncRParams ConstExp_List Exp_List
+%type <vec_val> BlockItem_List ConstDef_List VarDef_List FuncFParams FuncRParams
 %type <int_val> Number
 %type <str_val> UnaryOp Type
+%type <vec_val> Index_List ConstInitVal_List InitVal_List ExpIndex_List
 
 %%
 
@@ -459,15 +460,16 @@ ConstDef
   : IDENT '=' ConstInitVal {
     auto const_def = new ConstDefAST();
     const_def->ident = *unique_ptr<string>($1);
-    const_def->const_exp = nullptr;
     const_def->const_init_val = unique_ptr<BaseAST>($3);
     $$ = const_def;
   }
-  | IDENT '[' ConstExp ']' '=' ConstInitVal {
+  | IDENT Index_List '=' ConstInitVal {
     auto const_def = new ConstDefAST();
     const_def->ident = *unique_ptr<string>($1);
-    const_def->const_exp = unique_ptr<BaseAST>($3);
-    const_def->const_init_val = unique_ptr<BaseAST>($6);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($2);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      const_def->const_exps.push_back(move(*iter));
+    const_def->const_init_val = unique_ptr<BaseAST>($4);
     $$ = const_def;
   }
   ;
@@ -475,19 +477,21 @@ ConstDef
 ConstInitVal
   : ConstExp {
     auto const_init_val = new ConstInitValAST();
-    const_init_val->const_exps.push_back(unique_ptr<BaseAST>($1));
+    const_init_val->const_exp = unique_ptr<BaseAST>($1);
     $$ = const_init_val;
   }
   |
   '{' '}' {
     auto const_init_val = new ConstInitValAST();
+    const_init_val->const_exp = nullptr;
     $$ = const_init_val;
   }
-  | '{' ConstExp_List '}' {
+  | '{' ConstInitVal_List '}' {
     auto const_init_val = new ConstInitValAST();
+    const_init_val->const_exp = nullptr;
     vector<unique_ptr<BaseAST> > *v_ptr = ($2);
     for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
-      const_init_val->const_exps.push_back(move(*iter));
+      const_init_val->const_init_vals.push_back(move(*iter));
     $$ = const_init_val;
   }
   ;
@@ -511,13 +515,14 @@ LVal
   : IDENT {
     auto l_val = new LValAST();
     l_val->ident = *unique_ptr<string>($1);
-    l_val->exp = nullptr;
     $$ = l_val;
   }
-  | IDENT '[' Exp ']' {
+  | IDENT ExpIndex_List {
     auto l_val = new LValAST();
     l_val->ident = *unique_ptr<string>($1);
-    l_val->exp = unique_ptr<BaseAST>($3);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($2);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      l_val->exps.push_back(move(*iter));
     $$ = l_val;
   }
   ;
@@ -547,28 +552,30 @@ VarDef
     auto var_def = new VarDefAST();
     var_def->ident = *unique_ptr<string>($1);
     var_def->init_val = nullptr;
-    var_def->const_exp = nullptr;
     $$ = var_def;
   }
   | IDENT '=' InitVal {
     auto var_def = new VarDefAST();
     var_def->ident = *unique_ptr<string>($1);
     var_def->init_val = unique_ptr<BaseAST>($3);
-    var_def->const_exp = nullptr;
     $$ = var_def;
   }
-  | IDENT '[' ConstExp ']' {
+  | IDENT Index_List {
     auto var_def = new VarDefAST();
     var_def->ident = *unique_ptr<string>($1);
     var_def->init_val = nullptr;
-    var_def->const_exp = unique_ptr<BaseAST>($3);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($2);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      var_def->const_exps.push_back(move(*iter));
     $$ = var_def;
   }
-  | IDENT '[' ConstExp ']' '=' InitVal {
+  | IDENT Index_List '=' InitVal {
     auto var_def = new VarDefAST();
     var_def->ident = *unique_ptr<string>($1);
-    var_def->init_val = unique_ptr<BaseAST>($6);
-    var_def->const_exp = unique_ptr<BaseAST>($3);
+    var_def->init_val = unique_ptr<BaseAST>($4);
+    vector<unique_ptr<BaseAST> > *v_ptr = ($2);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      var_def->const_exps.push_back(move(*iter));
     $$ = var_def;
   }
   ;
@@ -576,18 +583,20 @@ VarDef
 InitVal
   : Exp {
     auto init_val = new InitValAST();
-    init_val->exps.push_back(unique_ptr<BaseAST>($1));
+    init_val->exp = unique_ptr<BaseAST>($1);
     $$ = init_val;
   }
   | '{' '}' {
     auto init_val = new InitValAST();
+    init_val->exp = nullptr;
     $$ = init_val;
   }
-  | '{' Exp_List '}' {
+  | '{' InitVal_List '}' {
     auto init_val = new InitValAST();
+    init_val->exp = nullptr;
     vector<unique_ptr<BaseAST> > *v_ptr = ($2);
     for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
-      init_val->exps.push_back(move(*iter));
+      init_val->init_vals.push_back(move(*iter));
     $$ = init_val;
   }
   ;
@@ -666,26 +675,52 @@ FuncRParams
   }
   ;
 
-ConstExp_List
-  : ConstExp {
+Index_List
+  : '[' ConstExp ']' {
     vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
-    v->push_back(unique_ptr<BaseAST>($1));
+    v->push_back(unique_ptr<BaseAST>($2));
     $$ = v;
   }
-  | ConstExp_List ',' ConstExp {
+  | Index_List '[' ConstExp ']' {
     vector<unique_ptr<BaseAST> > *v = ($1);
     v->push_back(unique_ptr<BaseAST>($3));
     $$ = v;
   }
   ;
 
-Exp_List
-  : Exp {
+ConstInitVal_List
+  : ConstInitVal {
     vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
     v->push_back(unique_ptr<BaseAST>($1));
     $$ = v;
   }
-  | Exp_List ',' Exp {
+  | ConstInitVal_List ',' ConstInitVal {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+  ;
+
+InitVal_List
+  : InitVal {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($1));
+    $$ = v;
+  }
+  | InitVal_List ',' InitVal {
+    vector<unique_ptr<BaseAST> > *v = ($1);
+    v->push_back(unique_ptr<BaseAST>($3));
+    $$ = v;
+  }
+  ;
+
+ExpIndex_List
+  : '[' Exp ']' {
+    vector<unique_ptr<BaseAST> > *v = new vector<unique_ptr<BaseAST> >;
+    v->push_back(unique_ptr<BaseAST>($2));
+    $$ = v;
+  }
+  | ExpIndex_List '[' Exp ']' {
     vector<unique_ptr<BaseAST> > *v = ($1);
     v->push_back(unique_ptr<BaseAST>($3));
     $$ = v;
