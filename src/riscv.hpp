@@ -51,11 +51,11 @@ int Cal_array_len(koopa_raw_type_t ty);
 Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr);
 
 int Cal_array_len(koopa_raw_type_t ty) {
-  if (ty->tag == KOOPA_RTT_INT32)
+  if (ty->tag == KOOPA_RTT_INT32 || ty->tag == KOOPA_RTT_POINTER)
     return 1;
   else if (ty->tag == KOOPA_RTT_ARRAY)
-    return ty->data.array.len * Cal_array_len(ty->data.array.base);
-  else 
+    return ty->data.array.len * Cal_array_len(ty->data.array.base); 
+  else
     assert(false);
   return 0;
 }
@@ -640,7 +640,7 @@ Reg_Add Visit(const koopa_raw_get_elem_ptr_t &get_elem_ptr) {
 
 Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr) {
   koopa_raw_value_t src = get_ptr.src;
-  assert(src->ty->data.pointer.base->tag == KOOPA_RTT_ARRAY); // 一定是数组指针
+  //assert(src->ty->data.pointer.base->tag == KOOPA_RTT_ARRAY); // 一定是数组指针
   bool is_local = (value_map[src].address != -1); //is_global = (value_map[src].glob_add != "");
   assert(value_map.count(src));
   struct Reg_Add result_var = {-1, -1, ""};
