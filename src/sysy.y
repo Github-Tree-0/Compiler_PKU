@@ -657,7 +657,28 @@ FuncFParam
     auto func_f_param = new FuncFParamAST();
     func_f_param->b_type = *unique_ptr<string>($1);
     assert(func_f_param->b_type == "int");
+    func_f_param->is_array = false;
     func_f_param->ident = *unique_ptr<string>($2);
+    $$ = func_f_param;
+  }
+  | Type IDENT '[' ']' Index_List {
+    auto func_f_param = new FuncFParamAST();
+    func_f_param->b_type = *unique_ptr<string>($1);
+    assert(func_f_param->b_type == "int");
+    func_f_param->ident = *unique_ptr<string>($2);
+    func_f_param->is_array = true;
+
+    vector<unique_ptr<BaseAST> > *v_ptr = ($5);
+    for (auto iter = v_ptr->begin(); iter != v_ptr->end(); iter++)
+      func_f_param->const_exps.push_back(move(*iter));
+    $$ = func_f_param;
+  }
+  | Type IDENT '[' ']' {
+    auto func_f_param = new FuncFParamAST();
+    func_f_param->b_type = *unique_ptr<string>($1);
+    assert(func_f_param->b_type == "int");
+    func_f_param->ident = *unique_ptr<string>($2);
+    func_f_param->is_array = true;
     $$ = func_f_param;
   }
   ;

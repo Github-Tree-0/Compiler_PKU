@@ -215,6 +215,8 @@ class FuncFParamAST : public BaseAST {
 public:
     std::string ident;
     std::string b_type;
+    bool is_array;
+    std::vector<std::unique_ptr<BaseAST> > const_exps;
 
     void Dump() const override {}
 };

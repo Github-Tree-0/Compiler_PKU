@@ -48,6 +48,7 @@ Reg_Add Visit(const koopa_raw_get_elem_ptr_t &get_elem_ptr);
 void save_all_regs();
 void Visit(const koopa_raw_aggregate_t &aggregate);
 int Cal_array_len(koopa_raw_type_t ty);
+Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr);
 
 int Cal_array_len(koopa_raw_type_t ty) {
   if (ty->tag == KOOPA_RTT_INT32)
@@ -321,6 +322,9 @@ Reg_Add Visit(const koopa_raw_value_t &value) {
     case KOOPA_RVT_AGGREGATE:
       Visit(kind.data.aggregate);
       break;
+    case KOOPA_RVT_GET_PTR:
+      result_var = Visit(kind.data.get_ptr);
+      value_map[value] = result_var;
     default:
       // 其他类型暂时遇不到
       assert(false);
@@ -563,8 +567,11 @@ Reg_Add Visit(const koopa_raw_global_alloc_t &global) {
     int32_t int_val = kind.data.integer.value;
     std::cout << "  " << ".word " << std::to_string(int_val) << std::endl;
   }
-  else if (kind.tag == KOOPA_RVT_ZERO_INIT)
-    std::cout << "  .zero 4" << std::endl;
+  else if (kind.tag == KOOPA_RVT_ZERO_INIT) {
+    int len = Cal_array_len(present_value->ty->data.pointer.base);
+    for (int i = 0; i < len; ++i)
+      std::cout << "  .zero 4" << std::endl;
+  }
   else if (kind.tag == KOOPA_RVT_AGGREGATE)
     Visit(global.init);
   else
@@ -631,6 +638,62 @@ Reg_Add Visit(const koopa_raw_get_elem_ptr_t &get_elem_ptr) {
   return result_var;
 }
 
+Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr) {
+  koopa_raw_value_t src = get_ptr.src;
+  assert(src->ty->data.pointer.base->tag == KOOPA_RTT_ARRAY); // 一定是数组指针
+  bool is_local = (value_map[src].address != -1); //is_global = (value_map[src].glob_add != "");
+  assert(value_map.count(src));
+  struct Reg_Add result_var = {-1, -1, ""};
+  int index_reg = Visit(get_ptr.index).reg;
+  
+  if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR || src->kind.tag == KOOPA_RVT_GET_PTR) {
+    int reg_stat = reg_stats[index_reg];
+    reg_stats[index_reg] = 2;
+    int add_reg = Visit(src).reg; // 里面是基地址
+    reg_stats[index_reg] = reg_stat;
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+    std::cout << "  " << "mul s1, s1, " << reg_names[index_reg] << std::endl;
+    reg_stat = reg_stats[add_reg];
+    reg_stats[add_reg] = 2;
+    int reg = Alloc_register(1);
+    reg_stats[add_reg] = reg_stat;
+    std::cout << "  " << "add " << reg_names[reg] << ", s1, " << reg_names[add_reg] << std::endl;
+  }
+  else {
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    if (is_local) {
+      int address = value_map[src].address;
+      if (address < -2048 || address >= 2048) {
+        std::cout << "  " << "li s1, " << std::to_string(address) << std::endl;
+        std::cout << "  " << "add s2, sp, s1" << std::endl;
+      }
+      else
+        std::cout << "  " << "addi s2, sp, " << std::to_string(address) << std::endl;
+      // s2 中是基地址
+      std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+      std::cout << "  " << "mul s1, " << reg_names[index_reg] << ", s1" << std::endl;
+      // s1 中是offset
+      int reg = Alloc_register(1);
+      result_var.reg = reg;
+      std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+    }
+    else { // global
+      std::string label = value_map[src].glob_add;
+      std::cout << "  " << "la s2, " << label << std::endl;
+      // s2 中是基地址
+      std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
+      std::cout << "  " << "mul s1, " << reg_names[index_reg] << ", s1" << std::endl;
+      // s1 中是offset
+      int reg = Alloc_register(1);
+      result_var.reg = reg;
+      std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
+    }
+  }
+
+  return result_var;
+}
+
 void Visit(const koopa_raw_aggregate_t &aggregate) {
   const koopa_raw_slice_t &elems = aggregate.elems;
   for (size_t i = 0; i < elems.len; ++i) {
@@ -640,8 +703,8 @@ void Visit(const koopa_raw_aggregate_t &aggregate) {
       int32_t int_val = kind.data.integer.value;
       std::cout << "  " << ".word " << std::to_string(int_val) << std::endl;
     }
-    else if (kind.tag == KOOPA_RVT_ZERO_INIT)
-      assert(false); // 懒得实现
+    else if (kind.tag == KOOPA_RVT_AGGREGATE)
+      Visit(elem);
     else
       assert(false);
   }
