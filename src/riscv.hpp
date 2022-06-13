@@ -708,7 +708,7 @@ Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr) {
   int index_reg = Visit(get_ptr.index).reg;
   
   if (is_local) {
-    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base);
     int address = value_map[src].address;
     if (address < -2048 || address >= 2048) {
       std::cout << "  " << "li s1, " << std::to_string(address) << std::endl;
@@ -725,7 +725,7 @@ Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr) {
     std::cout << "  " << "add " << reg_names[reg] << ", s2, s1" << std::endl;
   }
   else if (is_global) { // global
-    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base);
     std::string label = value_map[src].glob_add;
     std::cout << "  " << "la s2, " << label << std::endl;
     // s2 中是基地址
@@ -741,7 +741,7 @@ Reg_Add Visit(const koopa_raw_get_ptr_t &get_ptr) {
     reg_stats[index_reg] = 2;
     int add_reg = Visit(src).reg; // 里面是基地址
     reg_stats[index_reg] = reg_stat;
-    int len = 4 * Cal_array_len(src->ty->data.pointer.base->data.array.base);
+    int len = 4 * Cal_array_len(src->ty->data.pointer.base);
     std::cout << "  " << "li s1, " << std::to_string(len) << std::endl;
     std::cout << "  " << "mul s1, s1, " << reg_names[index_reg] << std::endl;
     reg_stat = reg_stats[add_reg];
