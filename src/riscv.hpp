@@ -209,6 +209,8 @@ void Visit(const koopa_raw_function_t &func) {
   if (save_ra)
     stack_size += 4;
 
+  stack_size += 4 * 15; // 留给寄存器
+
   size_t size_mod = stack_size % 16;
   if (size_mod)
     stack_size += 16 - size_mod;
