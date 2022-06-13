@@ -82,9 +82,9 @@ void save_all_regs() {
           if (add >= -2048 && add <= 2047)
             std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
           else {
-            std::cout << "  " << "li s1, " << std::to_string(add) << std::endl;
-            std::cout << "  " << "add s1, s1, sp" << std::endl;
-            std::cout << "  " << "sw " << reg_names[i] << ", 0(s1)" << std::endl;
+            std::cout << "  " << "li s3, " << std::to_string(add) << std::endl;
+            std::cout << "  " << "add s3, s3, sp" << std::endl;
+            std::cout << "  " << "sw " << reg_names[i] << ", 0(s3)" << std::endl;
           }
         }
       }
@@ -118,9 +118,9 @@ int Alloc_register(int stat) {
           if (add >= -2048 && add <= 2047)
             std::cout << "  " << "sw " << reg_names[i] << ", " << std::to_string(add) << "(sp)" << std::endl;
           else {
-            std::cout << "  " << "li s1, " << std::to_string(add) << std::endl;
-            std::cout << "  " << "add s1, s1, sp" << std::endl;
-            std::cout << "  " << "sw " << reg_names[i] << ", 0(s1)" << std::endl;
+            std::cout << "  " << "li s3, " << std::to_string(add) << std::endl;
+            std::cout << "  " << "add s3, s3, sp" << std::endl;
+            std::cout << "  " << "sw " << reg_names[i] << ", 0(s3)" << std::endl;
           }
         }
       }
