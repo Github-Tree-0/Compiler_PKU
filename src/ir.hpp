@@ -304,8 +304,10 @@ void Visit_AST(const FuncDefAST *func_def) {
     while (ir_str[pt] != '\n')
         last_line = ir_str[pt--] + last_line;
     if (last_line.substr(0, 5) != "  ret") { // deal with empty ret block
-        assert(type == "void");
-        ir_str += "  ret\n";
+        if (type == "void")
+            ir_str += "  ret\n";
+        else
+            ir_str += "  ret 0\n";
     }
     std::cout.rdbuf(buffer);
 
