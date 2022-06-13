@@ -15,6 +15,7 @@ std::map<std::string, std::string> function_table;
 std::map<std::string, int> var_names;
 std::map<std::string, int> is_ptr;
 std::map<std::string, int> is_arr;
+std::map<std::string, int> arr_dim;
 int if_else_cnt = 0;
 int other_cnt = 0;
 int while_cnt = 0;
@@ -128,6 +129,7 @@ void Visit_Global_Decl(const DeclAST *decl) {
                 is_arr[name] = 1;
                 ConstInitValAST *init_val = (ConstInitValAST *)(const_def->const_init_val.get());
                 int sizes_size = const_def->const_exps.size(), len = 1;
+                arr_dim[name] = sizes_size;
                 std::vector<int> sizes;
                 std::string alloc_str;
                 for (int j = sizes_size - 1; j >= 0; --j) {
@@ -178,6 +180,7 @@ void Visit_Global_Decl(const DeclAST *decl) {
             else { // array
                 is_arr[name] = 1;
                 int sizes_size = var_def->const_exps.size(), len = 1;
+                arr_dim[name] = sizes_size;
                 std::vector<int> sizes;
                 std::string alloc_str;
                 for (int j = sizes_size - 1; j >= 0; --j) {
@@ -555,8 +558,10 @@ std::string Visit_AST(const PrimaryExpAST *primary_exp) {
                         add = ptr_val;
                     }
                 }
-                if (in_call_func)
+                if (in_call_func && (arr_dim[std::get<1>(value)] > size))
                     std::cout << "  " << result_var << " = getelemptr " << ptr_val << ", 0" << std::endl;
+                // if (in_call_func)
+                //     std::cout << "  " << result_var << " = getelemptr " << ptr_val << ", 0" << std::endl;
                 else
                     std::cout << "  " << result_var << " = load " << ptr_val << std::endl;
             }
@@ -944,6 +949,7 @@ void Visit_AST(const ConstDefAST *const_def) {
         symbol_tables[index][const_def->ident] = name;
         is_arr[name] = 1;
         int sizes_size = const_def->const_exps.size(), len = 1;
+        arr_dim[name] = sizes_size;
         std::vector<int> sizes;
         std::string alloc_str;
         for (int i = sizes_size - 1; i >= 0; --i) {
@@ -1038,6 +1044,7 @@ void Visit_AST(const VarDefAST *var_def) {
         symbol_tables[index][var_def->ident] = name;
         is_arr[name] = 1;
         int sizes_size = var_def->const_exps.size(), len = 1;
+        arr_dim[name] = sizes_size;
         std::vector<int> sizes;
         std::string alloc_str;
         for (int i = sizes_size - 1; i >= 0; --i) {
@@ -1117,6 +1124,7 @@ std::string Visit_AST(const FuncFParamAST* func_f_param) {
         std::cout << display_name << ": *" << alloc_str;
         symbol_tables[i][func_f_param->ident] = result_var;
         is_ptr[result_var] = 1;
+        arr_dim[result_var] = sizes_size + 1;
         return_insts = "  " + result_var + " = alloc *" + alloc_str + "\n  store " + display_name + ", " + result_var + "\n";
     }
     else {
